@@ -1,0 +1,116 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PostCard from '../components/PostCard.astro';
+import CTABox from '../components/CTABox.astro';
+import ShareButtons from '../components/ShareButtons.astro';
+import { getCollection, render } from 'astro:content';
+import { getReadTime, categoryLabels } from '../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('posts');
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const allPosts = await getCollection('posts');
+
+const { Content } = await render(post);
+
+const readTime = getReadTime(post.body || '');
+
+const relatedPosts = allPosts
+  .filter((p) => p.id !== post.id && p.data.category === post.data.category)
+  .sort((a, b) => new Date(b.data.publishedDate).getTime() - new Date(a.data.publishedDate).getTime())
+  .slice(0, 3);
+
+const formattedDate = new Date(post.data.publishedDate).toLocaleDateString('en-US', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
+const postUrl = `https://blog.polymarket.tips/${post.id}`;
+
+const articleSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: post.data.title,
+  description: post.data.description,
+  datePublished: post.data.publishedDate,
+  author: {
+    '@type': 'Organization',
+    name: 'Polymarket Tips Team',
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: 'Polymarket Tips',
+    url: 'https://polymarket.tips',
+  },
+  mainEntityOfPage: {
+    '@type': 'WebPage',
+    '@id': postUrl,
+  },
+};
+---
+
+<BaseLayout
+  title={post.data.title}
+  description={post.data.description}
+  canonicalURL={postUrl}
+  type="article"
+  publishedDate={post.data.publishedDate}
+>
+  <script type="application/ld+json" set:html={JSON.stringify(articleSchema)} />
+
+  <article class="max-w-3xl mx-auto px-4 py-12">
+    <!-- Post Header -->
+    <header class="mb-8">
+      <div class="flex items-center gap-3 mb-4">
+        <a
+          href={`/category/${post.data.category}`}
+          class="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-500 no-underline hover:bg-amber-500/20"
+        >
+          {categoryLabels[post.data.category] || post.data.category}
+        </a>
+        <span class="text-slate-500 text-sm">{formattedDate}</span>
+        <span class="text-slate-600 text-sm">·</span>
+        <span class="text-slate-500 text-sm">{readTime}</span>
+      </div>
+      <h1 class="text-3xl md:text-4xl font-bold mb-4">{post.data.title}</h1>
+      <p class="text-slate-400 text-sm">By Polymarket Tips Team</p>
+    </header>
+
+    <ShareButtons title={post.data.title} url={postUrl} />
+
+    <!-- Post Content -->
+    <div class="prose max-w-none">
+      <Content />
+    </div>
+
+    <!-- End CTA -->
+    <CTABox />
+
+    <ShareButtons title={post.data.title} url={postUrl} />
+  </article>
+
+  <!-- Related Posts -->
+  {relatedPosts.length > 0 && (
+    <section class="max-w-6xl mx-auto px-4 pb-16">
+      <h2 class="text-2xl font-bold mb-6">Related Posts</h2>
+      <div class="grid md:grid-cols-3 gap-6">
+        {relatedPosts.map((rp) => (
+          <PostCard
+            title={rp.data.title}
+            description={rp.data.description}
+            slug={rp.id}
+            category={rp.data.category}
+            publishedDate={rp.data.publishedDate}
+          />
+        ))}
+      </div>
+    </section>
+  )}
+</BaseLayout>

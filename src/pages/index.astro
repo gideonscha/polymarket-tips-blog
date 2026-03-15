@@ -1,0 +1,76 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import PostCard from '../components/PostCard.astro';
+import { getCollection } from 'astro:content';
+
+const allPosts = await getCollection('posts');
+const posts = allPosts.sort(
+  (a, b) => new Date(b.data.publishedDate).getTime() - new Date(a.data.publishedDate).getTime()
+);
+const featured = posts.slice(0, 3);
+const rest = posts.slice(3);
+---
+
+<BaseLayout
+  title="Polymarket Tips Blog"
+  description="Polymarket intelligence and strategy. Learn how the smartest traders think, track convergence signals, and trade smarter on Polymarket."
+>
+  <!-- Hero -->
+  <section class="py-16 md:py-24 px-4">
+    <div class="max-w-4xl mx-auto text-center">
+      <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold mb-6">
+        Polymarket Intelligence<br />& Strategy
+      </h1>
+      <p class="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto mb-8">
+        Learn how the smartest traders think. Track convergence signals. Trade smarter.
+      </p>
+      <a
+        href="https://polymarket.tips"
+        class="inline-block bg-amber-500 hover:bg-amber-400 text-navy font-semibold px-6 py-3 rounded-lg no-underline transition-colors text-lg"
+      >
+        View Live Convergence Signals →
+      </a>
+    </div>
+  </section>
+
+  <!-- Featured Posts -->
+  {featured.length > 0 && (
+    <section class="px-4 pb-12">
+      <div class="max-w-6xl mx-auto">
+        <h2 class="text-2xl font-bold mb-6">Latest Posts</h2>
+        <div class="grid md:grid-cols-3 gap-6">
+          {featured.map((post) => (
+            <PostCard
+              title={post.data.title}
+              description={post.data.description}
+              slug={post.id}
+              category={post.data.category}
+              publishedDate={post.data.publishedDate}
+              featured
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- All Posts -->
+  {rest.length > 0 && (
+    <section class="px-4 pb-16">
+      <div class="max-w-6xl mx-auto">
+        <h2 class="text-2xl font-bold mb-6">All Posts</h2>
+        <div class="grid md:grid-cols-2 gap-6">
+          {rest.map((post) => (
+            <PostCard
+              title={post.data.title}
+              description={post.data.description}
+              slug={post.id}
+              category={post.data.category}
+              publishedDate={post.data.publishedDate}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+</BaseLayout>

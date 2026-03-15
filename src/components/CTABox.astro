@@ -1,0 +1,23 @@
+---
+interface Props {
+  text?: string;
+  buttonText?: string;
+  href?: string;
+}
+
+const {
+  text = 'Track top traders and convergence signals in real time.',
+  buttonText = 'Track these traders live on polymarket.tips →',
+  href = 'https://polymarket.tips',
+} = Astro.props;
+---
+
+<div class="bg-navy-light border border-amber-500/20 rounded-xl p-6 my-8">
+  <p class="text-white font-semibold text-lg mb-2">{text}</p>
+  <a
+    href={href}
+    class="inline-block bg-amber-500 hover:bg-amber-400 text-navy font-semibold text-sm px-5 py-2.5 rounded-lg no-underline transition-colors"
+  >
+    {buttonText}
+  </a>
+</div>

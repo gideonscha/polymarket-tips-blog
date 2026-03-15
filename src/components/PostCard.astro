@@ -1,0 +1,44 @@
+---
+interface Props {
+  title: string;
+  description: string;
+  slug: string;
+  category: string;
+  publishedDate: string;
+  featured?: boolean;
+}
+
+const { title, description, slug, category, publishedDate, featured = false } = Astro.props;
+
+const categoryLabels: Record<string, string> = {
+  'trader-intelligence': 'Trader Intelligence',
+  'convergence-signals': 'Convergence Signals',
+  'market-strategy': 'Market Strategy',
+  'polymarket-guides': 'Polymarket Guides',
+};
+
+const formattedDate = new Date(publishedDate).toLocaleDateString('en-US', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+---
+
+<article class={`bg-navy-light rounded-xl p-6 border border-slate-800 hover:border-slate-700 transition-colors ${featured ? 'md:p-8' : ''}`}>
+  <div class="flex items-center gap-3 mb-3">
+    <a
+      href={`/category/${category}`}
+      class="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-500 no-underline hover:bg-amber-500/20"
+    >
+      {categoryLabels[category] || category}
+    </a>
+    <span class="text-slate-500 text-xs">{formattedDate}</span>
+  </div>
+  <h3 class={`font-bold text-white mb-2 ${featured ? 'text-xl md:text-2xl' : 'text-lg'}`}>
+    <a href={`/${slug}`} class="text-white hover:text-amber-500 no-underline">{title}</a>
+  </h3>
+  <p class="text-slate-400 text-sm leading-relaxed mb-4">{description}</p>
+  <a href={`/${slug}`} class="text-amber-500 text-sm font-medium no-underline hover:text-amber-400">
+    Read more →
+  </a>
+</article>

@@ -1,0 +1,48 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PostCard from '../../components/PostCard.astro';
+import { getCollection } from 'astro:content';
+import { categoryLabels, categories } from '../../lib/posts';
+
+export async function getStaticPaths() {
+  return categories.map((category) => ({
+    params: { category },
+  }));
+}
+
+const { category } = Astro.params;
+const label = categoryLabels[category] || category;
+
+const allPosts = await getCollection('posts');
+const posts = allPosts
+  .filter((p) => p.data.category === category)
+  .sort((a, b) => new Date(b.data.publishedDate).getTime() - new Date(a.data.publishedDate).getTime());
+---
+
+<BaseLayout
+  title={`${label} — Polymarket Tips Blog`}
+  description={`Read the latest ${label.toLowerCase()} articles on the Polymarket Tips Blog. Trader intelligence, signals, and strategy for Polymarket.`}
+>
+  <section class="max-w-6xl mx-auto px-4 py-12">
+    <h1 class="text-3xl md:text-4xl font-bold mb-2">{label}</h1>
+    <p class="text-slate-400 mb-8">
+      {posts.length} {posts.length === 1 ? 'article' : 'articles'}
+    </p>
+
+    {posts.length > 0 ? (
+      <div class="grid md:grid-cols-2 gap-6">
+        {posts.map((post) => (
+          <PostCard
+            title={post.data.title}
+            description={post.data.description}
+            slug={post.id}
+            category={post.data.category}
+            publishedDate={post.data.publishedDate}
+          />
+        ))}
+      </div>
+    ) : (
+      <p class="text-slate-400">No posts in this category yet.</p>
+    )}
+  </section>
+</BaseLayout>
