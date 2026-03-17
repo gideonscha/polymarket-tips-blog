@@ -33,21 +33,24 @@ const formattedDate = new Date(post.data.publishedDate).toLocaleDateString('en-U
 });
 
 const postUrl = `https://blog.polymarket.tips/${post.id}`;
+const seoTitle = post.data.metaTitle || post.data.title;
 
 const articleSchema = {
   '@context': 'https://schema.org',
   '@type': 'Article',
   headline: post.data.title,
   description: post.data.description,
+  url: postUrl,
   datePublished: post.data.publishedDate,
+  dateModified: post.data.publishedDate,
   author: {
     '@type': 'Organization',
-    name: 'Polymarket Tips Team',
+    name: 'Polymarket Tips',
   },
   publisher: {
     '@type': 'Organization',
     name: 'Polymarket Tips',
-    url: 'https://polymarket.tips',
+    url: 'https://blog.polymarket.tips',
   },
   mainEntityOfPage: {
     '@type': 'WebPage',
@@ -57,7 +60,7 @@ const articleSchema = {
 ---
 
 <BaseLayout
-  title={post.data.title}
+  title={seoTitle}
   description={post.data.description}
   canonicalURL={postUrl}
   type="article"
@@ -80,7 +83,7 @@ const articleSchema = {
         <span class="text-slate-500 text-sm">{readTime}</span>
       </div>
       <h1 class="text-3xl md:text-4xl font-bold mb-4">{post.data.title}</h1>
-      <p class="text-slate-400 text-sm">By Polymarket Tips Team</p>
+      <p class="text-slate-400 text-sm">By Polymarket Tips</p>
     </header>
 
     <ShareButtons title={post.data.title} url={postUrl} />
