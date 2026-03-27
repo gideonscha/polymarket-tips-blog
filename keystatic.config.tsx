@@ -24,8 +24,22 @@ export default config({
           defaultValue: 'trader-intelligence',
         }),
         publishedDate: fields.date({ label: 'Published Date' }),
-        ogImage: fields.text({ label: 'OG Image URL (optional)' }),
-        content: fields.markdoc({ label: 'Content' }),
+        ogImage: fields.text({ label: 'OG Image URL (optional, overrides heroImage for social)' }),
+        heroImage: fields.image({
+          label: 'Hero Image',
+          directory: 'public/images/blog',
+          publicPath: '/images/blog/',
+        }),
+        heroImageAlt: fields.text({ label: 'Hero Image Alt Text' }),
+        content: fields.markdoc({
+          label: 'Content',
+          options: {
+            image: {
+              directory: 'public/images/blog',
+              publicPath: '/images/blog/',
+            },
+          },
+        }),
       },
     }),
   },

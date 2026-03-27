@@ -35,6 +35,12 @@ const formattedDate = new Date(post.data.publishedDate).toLocaleDateString('en-U
 const postUrl = `https://blog.polymarket.tips/${post.id}`;
 const seoTitle = post.data.metaTitle || post.data.title;
 
+// Resolve OG image: heroImage > ogImage field > default
+const heroImagePath = post.data.heroImage || '';
+const resolvedOgImage = heroImagePath
+  ? `https://blog.polymarket.tips${heroImagePath}`
+  : post.data.ogImage || 'https://blog.polymarket.tips/og-default.svg';
+
 const articleSchema = {
   '@context': 'https://schema.org',
   '@type': 'Article',
@@ -56,12 +62,14 @@ const articleSchema = {
     '@type': 'WebPage',
     '@id': postUrl,
   },
+  ...(heroImagePath ? { image: `https://blog.polymarket.tips${heroImagePath}` } : {}),
 };
 ---
 
 <BaseLayout
   title={seoTitle}
   description={post.data.description}
+  ogImage={resolvedOgImage}
   canonicalURL={postUrl}
   type="article"
   publishedDate={post.data.publishedDate}
@@ -88,6 +96,21 @@ const articleSchema = {
 
     <ShareButtons title={post.data.title} url={postUrl} />
 
+    {/* Hero Image */}
+    {heroImagePath && (
+      <div class="mb-8">
+        <img
+          src={heroImagePath}
+          alt={post.data.heroImageAlt || post.data.title}
+          width="768"
+          height="400"
+          loading="eager"
+          decoding="async"
+          class="w-full max-h-[400px] object-cover rounded-lg border border-amber-500/30"
+        />
+      </div>
+    )}
+
     <!-- Post Content -->
     <div class="prose max-w-none">
       <Content />
@@ -111,6 +134,8 @@ const articleSchema = {
             slug={rp.id}
             category={rp.data.category}
             publishedDate={rp.data.publishedDate}
+            heroImage={rp.data.heroImage}
+            heroImageAlt={rp.data.heroImageAlt}
           />
         ))}
       </div>
