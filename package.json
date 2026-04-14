@@ -9,9 +9,11 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "blog-agent": "node scripts/daily-blog-agent.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.88.0",
     "@astrojs/markdoc": "^0.15.11",
     "@astrojs/react": "^5.0.0",
     "@astrojs/sitemap": "^3.7.1",
