@@ -23,6 +23,30 @@ const IMAGES_DIR = path.join(ROOT, 'public/images/blog');
 
 const ANTHROPIC_MODEL = 'claude-opus-4-5';
 
+// ---------- Keyword priorities (from Google Search Console) ----------
+// Real Search Console data — terms close to page 1, ordered by priority
+const KEYWORD_PRIORITIES = [
+  // TIER 1 — Already ranking 8-15, push these to page 1
+  { keyword: 'polymarket whale tracker', position: 11.5, hasPost: true, slug: 'polymarket-whale-tracker' },
+  { keyword: 'polymarket tracker', position: 11, hasPost: false },
+  { keyword: 'polymarket leaderboard', position: 7.24, hasPost: true, slug: 'polymarket-leaderboard-explained' },
+  { keyword: 'polymarket top traders', position: 6.47, hasPost: true, slug: 'top-polymarket-traders-2026' },
+  { keyword: 'polymarket archetype tags', position: 7.47, hasPost: true, slug: 'polymarket-archetype-tags-explained' },
+  { keyword: 'best polymarket traders', position: 11.88, hasPost: true, slug: 'best-polymarket-traders-to-follow-2026' },
+  { keyword: 'what is a convergence signal', position: 15.15, hasPost: true, slug: 'what-is-a-convergence-signal' },
+
+  // TIER 2 — Getting impressions, no post yet — high opportunity
+  { keyword: 'polymarket trading guide', position: 80, hasPost: false },
+  { keyword: 'convergence trading strategy', position: 81, hasPost: false },
+  { keyword: 'polymarket copy trading', position: null, hasPost: false },
+  { keyword: 'how to trade on polymarket', position: null, hasPost: false },
+  { keyword: 'polymarket beginner guide', position: null, hasPost: false },
+  { keyword: 'polymarket fees explained', position: null, hasPost: false },
+  { keyword: 'polymarket accuracy', position: null, hasPost: false },
+  { keyword: 'polymarket vs sports betting', position: null, hasPost: false },
+  { keyword: 'prediction market strategy', position: null, hasPost: false },
+];
+
 // ---------- Polymarket research ----------
 
 async function fetchTrendingMarkets() {
@@ -84,12 +108,17 @@ const SYSTEM_PROMPT = `You are the editorial AI for polymarket.tips, a site that
 
 You write a daily blog post for blog.polymarket.tips. Every post must look indistinguishable from the manually written posts — same format, same tone, same structure.
 
+## Content strategy
+
+You are building long-term organic search traffic, not just reacting to daily news. Evergreen keyword-targeted posts that answer specific search queries outperform timely posts by 10:1 over 6 months. When in doubt between a timely topic and a keyword gap, choose the keyword gap. The goal is to rank on page 1 of Google for high-intent Polymarket search terms.
+
 Today you will be given:
 1. The current date
 2. Today's trending Polymarket markets (with 24h volume and liquidity)
 3. The list of existing blog post slugs (so you do not duplicate topics)
+4. Keyword priority data from Google Search Console — terms already getting impressions that need supporting content
 
-Your task: pick the SINGLE most compelling, timely topic that does NOT duplicate an existing post, and write a complete blog post in the exact format below.
+Your task: pick the SINGLE best topic (heavily weighted toward keyword gaps, see rules below) and write a complete blog post in the exact format below.
 
 ## Output format
 
@@ -157,15 +186,38 @@ Return ONLY the JSON object. No preamble, no explanation, no markdown fences.`;
 async function generatePost({ markets, existingSlugs, today }) {
   const client = new Anthropic();
 
+  const keywordGaps = KEYWORD_PRIORITIES.filter(k => !k.hasPost);
+  const keywordExisting = KEYWORD_PRIORITIES.filter(k => k.hasPost);
+
   const userMessage = `Today: ${today}
 
 Existing blog post slugs (DO NOT duplicate these topics):
 ${existingSlugs.map(s => `- ${s}`).join('\n')}
 
-Today's trending Polymarket markets (sorted by 24h volume):
+KEYWORD PRIORITY DATA (from Google Search Console):
+The following terms are already getting Google impressions but need stronger content to rank higher.
+Prioritise these when choosing today's topic — especially terms marked hasPost: false (no post exists yet).
+
+KEYWORD GAPS — NO POST EXISTS, HIGHEST PRIORITY:
+${keywordGaps.map(k => {
+  const pos = k.position != null ? `currently ranking ~${k.position}` : 'getting impressions, not yet ranking';
+  return `- "${k.keyword}" — NO POST EXISTS — ${pos} — high priority to create`;
+}).join('\n')}
+
+TERMS WITH EXISTING POSTS (do NOT duplicate these — consider writing a RELATED supporting post only if you have a fresh angle):
+${keywordExisting.map(k => `- "${k.keyword}" — existing post at /${k.slug}/ — ranking ~${k.position}`).join('\n')}
+
+TOPIC SELECTION RULES:
+1. DEFAULT CHOICE: pick the highest-priority keyword gap (hasPost: false) from above and write a post that targets that exact keyword. Use the keyword in the H1, meta title, meta description, and 3+ times in the body.
+2. If a Tier 2 keyword gap is relevant to today's Polymarket trending data — even better, combine the two angles.
+3. Only write a pure trending/news post if it is genuinely significant breaking news (major price move, major geopolitical event, major Polymarket announcement that is today's story). Timely posts are the exception, not the rule.
+4. Never write a second post on the same keyword as an existing post — check the slug list and the existing-keywords list above.
+5. When targeting a keyword gap, derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.
+
+Today's trending Polymarket markets (sorted by 24h volume, for reference / optional trending hook):
 ${JSON.stringify(markets, null, 2)}
 
-Pick the best topic and write the full blog post. Return only the JSON object.`;
+Pick the best topic following the rules above and write the full blog post. Return only the JSON object.`;
 
   console.log('Calling Claude...');
   const response = await client.messages.create({
