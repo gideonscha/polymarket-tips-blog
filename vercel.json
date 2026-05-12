@@ -4,6 +4,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
+  "trailingSlash": true,
   "redirects": [
     {
       "source": "/sitemap.xml",
