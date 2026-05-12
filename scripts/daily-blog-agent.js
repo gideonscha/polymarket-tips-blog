@@ -358,6 +358,17 @@ async function generatePost({ markets, existingSlugs, today, recentPosts, reject
   const coveredGaps = annotated.filter(k => !k.hasPost && k.recentlyCovered);
   const keywordExisting = annotated.filter(k => k.hasPost);
 
+  // Words appearing in 3+ recent posts — overused, treat as if they were
+  // additional stopwords so Claude doesn't reach for them again.
+  const wordFreq = new Map();
+  for (const rp of recentPosts) {
+    for (const w of rp.topicWords) wordFreq.set(w, (wordFreq.get(w) || 0) + 1);
+  }
+  const overusedWords = [...wordFreq.entries()]
+    .filter(([, c]) => c >= 3)
+    .sort((a, b) => b[1] - a[1])
+    .map(([w, c]) => `${w} (×${c})`);
+
   const userMessage = `Today: ${today}
 
 Existing blog post slugs (DO NOT duplicate these topics):
@@ -394,7 +405,11 @@ TOPIC SELECTION PRIORITY ORDER:
 4. LAST RESORT ONLY: Pure trending/timely post — only if it is genuinely major breaking news AND its topic words do not overlap with any recent post by 2+
 
 DUPLICATE-AVOIDANCE RULE (HARD CONSTRAINT):
-Your proposed slug + title combined must not share 2 or more topic words with ANY post in the "Recently published" list above. This is enforced post-generation — if you violate it, your output will be rejected. Topic words exclude stopwords like "the/and/of" and the brand words "polymarket/tips/blog/2026/2025/2024". Words like "tracker", "smart", "money", "guide", "follow", "strategy", "trader", "tools" all count as topic words and are heavily reused — be deliberate about creating a distinct angle.
+Your proposed slug + title combined must not share 2 or more topic words with ANY post in the "Recently published" list above. This is enforced post-generation — if you violate it, your output will be rejected. Topic words exclude stopwords like "the/and/of" and the brand words "polymarket/tips/blog/2026/2025/2024" and the brand-frame phrase "smart money" (which is collapsed and ignored). Almost everything else counts.
+
+OVERUSED WORDS — appear in 3+ recent posts, very high collision risk:
+${overusedWords.length ? overusedWords.join(', ') : '(none yet)'}
+Reusing two of these in your title/slug is the #1 source of duplicate rejections. Use AT MOST ONE of them. Reach for fresher framing instead.
 
 TODAY'S SPECIAL INSTRUCTION: If "igetlitty polymarket" is in AVAILABLE KEYWORD GAPS, prioritise it — write a trader spotlight post about the Polymarket trader igetlitty.
 
@@ -606,17 +621,31 @@ async function main() {
     }
   }
 
-  let post = await generatePost({ markets, existingSlugs, today, recentPosts });
-  validateStructural(post);
-  try {
-    validateNotDuplicate(post);
-  } catch (err) {
-    if (!(err instanceof DuplicateTopicError)) throw err;
-    console.warn(`First attempt rejected: ${err.message}`);
-    console.warn('Retrying with explicit rejection context...');
-    post = await generatePost({ markets, existingSlugs, today, recentPosts, rejectionReason: err.message });
-    validateStructural(post);
-    validateNotDuplicate(post); // throws and aborts if still a duplicate
+  // Try up to 3 times. Each retry passes the accumulated rejection log so
+  // Claude can see exactly which titles and which shared words have already
+  // failed and pick fresher framing.
+  const MAX_ATTEMPTS = 3;
+  const rejections = [];
+  let post = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const candidate = await generatePost({
+      markets,
+      existingSlugs,
+      today,
+      recentPosts,
+      rejectionReason: rejections.length ? rejections.join('\n') : null,
+    });
+    validateStructural(candidate);
+    try {
+      validateNotDuplicate(candidate);
+      post = candidate;
+      break;
+    } catch (err) {
+      if (!(err instanceof DuplicateTopicError)) throw err;
+      console.warn(`Attempt ${attempt}/${MAX_ATTEMPTS} rejected: ${err.message}`);
+      rejections.push(`Attempt ${attempt}: ${err.message}`);
+      if (attempt === MAX_ATTEMPTS) throw err;
+    }
   }
 
   console.log(`Generated post: "${post.title}" (${post.slug})`);
