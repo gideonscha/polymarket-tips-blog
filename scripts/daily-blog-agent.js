@@ -110,6 +110,158 @@ function getExistingSlugs() {
     .map(d => d.name);
 }
 
+// ---------- Duplicate detection (topic-word overlap) ----------
+//
+// Problem: the agent has been producing near-duplicate posts on the same
+// topic with slightly different slugs (e.g. five "polymarket tracker" /
+// "smart money tracker" variants in a single week). Exact slug-match is
+// too weak. Instead we extract the discriminating noun tokens from each
+// title/slug and treat any pair sharing >=2 tokens as the same topic.
+
+// Function words + brand/year markers that appear in nearly every title
+// and don't help discriminate topics. Content words like "tracker", "guide",
+// "follow", "strategy", "trader" are intentionally KEPT so we catch
+// "smart money tracker" / "tracker tools smart money" type dupes.
+//
+// "market"/"prediction" ARE added — they appear in almost every Polymarket
+// title and would otherwise cause false positives between genuinely distinct
+// topics (e.g. "Iran ceasefire MARKET" vs "Bitcoin PREDICTION market").
+const STOPWORDS = new Set([
+  'the','a','an','of','to','in','on','for','with','and','or','by','at','as','is','are','was','were','be',
+  'it','this','that','these','those','your','our','my','its','their','his','her',
+  'do','does','did','will','would','should','could','can','may','might','must','shall',
+  'what','why','how','when','where','who','which','whose','whom',
+  'has','have','had','having','but','not','no','yes',
+  'if','so','too','very','just','some','any','all','than','then','from','into','out','up','down',
+  'about','again','also','before','after','during','through','between','among','over','under','within',
+  // Brand / domain markers — in nearly every post title, no discriminating power
+  'polymarket','tips','blog',
+  // Niche-generic — in almost every Polymarket post (after singularisation)
+  'market','prediction',
+  // Year markers
+  '2024','2025','2026','2027','2028',
+]);
+
+// Brand-frame bigrams: when BOTH halves co-occur in a title we treat them
+// as a single non-discriminating phrase (drop both from the topic set).
+// "Smart money" is the blog's recurring framing — two posts on completely
+// different topics both legitimately mention it, so {smart, money} alone
+// must not trigger a duplicate.
+const BRAND_PHRASES = [
+  ['smart', 'money'],
+];
+
+// Tokenise a title or slug into the set of discriminating topic words.
+// Lowercases, splits on non-alphanumeric, strips trailing 's' for crude
+// singularisation (traders -> trader, tools -> tool, positions -> position),
+// drops stopwords and tokens shorter than 3 chars.
+function extractTopicWords(text) {
+  if (!text) return new Set();
+  const words = new Set(
+    text.toLowerCase()
+      .replace(/[‘’']/g, '')
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean)
+      .map(t => (t.length > 3 && t.endsWith('s')) ? t.slice(0, -1) : t)
+      .filter(t => t.length >= 3 && !STOPWORDS.has(t)),
+  );
+  // Strip brand-frame bigrams: if both halves are present, remove both.
+  for (const [a, b] of BRAND_PHRASES) {
+    if (words.has(a) && words.has(b)) {
+      words.delete(a);
+      words.delete(b);
+    }
+  }
+  return words;
+}
+
+function postTopicWords({ title, slug }) {
+  const s = new Set();
+  for (const w of extractTopicWords(title)) s.add(w);
+  for (const w of extractTopicWords(slug)) s.add(w);
+  return s;
+}
+
+function overlapCount(setA, setB) {
+  let n = 0;
+  for (const t of setA) if (setB.has(t)) n++;
+  return n;
+}
+
+function overlapWords(setA, setB) {
+  const out = [];
+  for (const t of setA) if (setB.has(t)) out.push(t);
+  return out;
+}
+
+// Parse the YAML-ish frontmatter formats the agent emits. We only need
+// title + publishedDate so this is intentionally small rather than a full
+// YAML parser. Handles folded block scalars (>-) and single/double-quoted
+// scalars.
+function parseFrontmatter(text) {
+  const m = text.match(/^---\n([\s\S]+?)\n---/);
+  if (!m) return {};
+  const lines = m[1].split('\n');
+  const result = {};
+  for (let i = 0; i < lines.length; i++) {
+    const kv = lines[i].match(/^([a-zA-Z][a-zA-Z0-9_]*):\s*(.*)$/);
+    if (!kv) continue;
+    const key = kv[1];
+    let val = kv[2].trim();
+    if (val === '>-' || val === '>' || val === '|' || val === '|-') {
+      const parts = [];
+      while (i + 1 < lines.length && /^\s+/.test(lines[i + 1])) {
+        i++;
+        parts.push(lines[i].trim());
+      }
+      result[key] = parts.join(' ');
+    } else if ((val.startsWith("'") && val.endsWith("'")) || (val.startsWith('"') && val.endsWith('"'))) {
+      result[key] = val.slice(1, -1).replace(/''/g, "'");
+    } else {
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
+// Read all posts, returning [{ slug, title, publishedDate, isRecent, topicWords }].
+// "Recent" = published within `recentDays` of today.
+function getAllPosts(recentDays = 30) {
+  if (!fs.existsSync(POSTS_DIR)) return [];
+  const cutoff = new Date(Date.now() - recentDays * 24 * 60 * 60 * 1000);
+  const dirs = fs.readdirSync(POSTS_DIR, { withFileTypes: true }).filter(d => d.isDirectory());
+  const posts = [];
+  for (const d of dirs) {
+    const file = path.join(POSTS_DIR, d.name, 'index.mdoc');
+    if (!fs.existsSync(file)) continue;
+    const fm = parseFrontmatter(fs.readFileSync(file, 'utf8'));
+    const slug = d.name;
+    const title = fm.title || '';
+    const publishedDate = fm.publishedDate || '';
+    const published = publishedDate ? new Date(publishedDate) : null;
+    const isRecent = published instanceof Date && !isNaN(published) && published >= cutoff;
+    posts.push({
+      slug,
+      title,
+      publishedDate,
+      isRecent,
+      topicWords: postTopicWords({ title, slug }),
+    });
+  }
+  return posts;
+}
+
+class DuplicateTopicError extends Error {}
+
+// Returns the first recent post whose topic words overlap with `candidateWords`
+// at >= `threshold` tokens, or null if none.
+function findOverlappingRecentPost(candidateWords, recentPosts, threshold = 2) {
+  for (const rp of recentPosts) {
+    if (overlapCount(candidateWords, rp.topicWords) >= threshold) return rp;
+  }
+  return null;
+}
+
 // ---------- Claude content generation ----------
 
 const SYSTEM_PROMPT = `You are the editorial AI for polymarket.tips, a site that tracks the top 50 Polymarket traders by verified PnL and surfaces "convergence signals" when multiple top traders independently take the same position on a market.
@@ -191,39 +343,62 @@ Return ONLY a single JSON object — no markdown fences, no prose before or afte
 
 Return ONLY the JSON object. No preamble, no explanation, no markdown fences.`;
 
-async function generatePost({ markets, existingSlugs, today }) {
+async function generatePost({ markets, existingSlugs, today, recentPosts, rejectionReason }) {
   const client = new Anthropic();
 
-  const keywordGaps = KEYWORD_PRIORITIES.filter(k => !k.hasPost);
-  const keywordExisting = KEYWORD_PRIORITIES.filter(k => k.hasPost);
+  // Annotate every keyword with whether a recent post already covers it
+  // (topic-word overlap >= 2 with any post in the last 30 days).
+  const annotated = KEYWORD_PRIORITIES.map(k => {
+    const kwWords = extractTopicWords(k.keyword);
+    const overlapping = findOverlappingRecentPost(kwWords, recentPosts, 2);
+    return { ...k, recentlyCovered: !!overlapping, coveredBy: overlapping?.slug || null };
+  });
+
+  const availableGaps = annotated.filter(k => !k.hasPost && !k.recentlyCovered);
+  const coveredGaps = annotated.filter(k => !k.hasPost && k.recentlyCovered);
+  const keywordExisting = annotated.filter(k => k.hasPost);
 
   const userMessage = `Today: ${today}
 
 Existing blog post slugs (DO NOT duplicate these topics):
 ${existingSlugs.map(s => `- ${s}`).join('\n')}
 
-KEYWORD PRIORITY DATA (from Google Search Console):
-The following terms are already getting Google impressions but need stronger content to rank higher.
-Prioritise these when choosing today's topic — especially terms marked hasPost: false (no post exists yet).
-
-KEYWORD GAPS — NO POST EXISTS, HIGHEST PRIORITY:
-${keywordGaps.map(k => {
-  const pos = k.position != null ? `currently ranking ~${k.position}` : 'getting impressions, not yet ranking';
-  return `- "${k.keyword}" — NO POST EXISTS — ${pos} — high priority to create`;
+RECENTLY PUBLISHED POSTS (last 30 days) — your topic must NOT overlap with any of these on 2+ topic words:
+${recentPosts.map(p => {
+  const words = [...p.topicWords].sort().join(', ');
+  return `- [${p.publishedDate}] "${p.title}"\n    topic words: { ${words} }`;
 }).join('\n')}
 
-TERMS WITH EXISTING POSTS (do NOT duplicate these — consider writing a RELATED supporting post only if you have a fresh angle):
+KEYWORD PRIORITY DATA (from Google Search Console):
+
+AVAILABLE KEYWORD GAPS — no post exists AND no recent post overlaps:
+${availableGaps.length
+  ? availableGaps.map(k => {
+      const pos = k.position != null ? `ranking ~${k.position}` : 'no rank yet';
+      return `- "${k.keyword}" — ${pos} — SAFE TO TARGET`;
+    }).join('\n')
+  : '(none available — fall back to a genuinely fresh angle on an uncovered Tier 3 idea)'}
+
+KEYWORD GAPS RECENTLY COVERED — do NOT pick these, a recent post already addresses them:
+${coveredGaps.length
+  ? coveredGaps.map(k => `- "${k.keyword}" — covered by recent post /${k.coveredBy}/`).join('\n')
+  : '(none)'}
+
+TERMS WITH EXISTING POSTS (older — these may eventually get supporting content, but only with a genuinely fresh angle that does NOT overlap with any recent post on 2+ topic words):
 ${keywordExisting.map(k => `- "${k.keyword}" — existing post at /${k.slug}/ — ranking ~${k.position}`).join('\n')}
 
 TOPIC SELECTION PRIORITY ORDER:
-1. FIRST PRIORITY: Tier 2 keywords with no post yet AND relevant to current Polymarket trends
-2. SECOND PRIORITY: Tier 3 keywords with no post yet — write evergreen guides targeting these
-3. THIRD PRIORITY: Supporting content for Tier 1 posts (help them rank higher with related posts)
-4. LAST RESORT ONLY: Pure trending/timely post — only if it is genuinely major breaking news
+1. FIRST PRIORITY: An AVAILABLE keyword gap relevant to current Polymarket trends
+2. SECOND PRIORITY: Any other AVAILABLE keyword gap (write a Tier 3 evergreen guide)
+3. THIRD PRIORITY: Supporting content for a Tier 1 post — only if your angle's topic words overlap with every recent post by AT MOST ONE
+4. LAST RESORT ONLY: Pure trending/timely post — only if it is genuinely major breaking news AND its topic words do not overlap with any recent post by 2+
 
-TODAY'S SPECIAL INSTRUCTION: If "igetlitty polymarket" has not been covered, write a trader spotlight post about the Polymarket trader igetlitty. This term is already ranking at position 6 with growing search volume — a dedicated post will push it to page 1 quickly.
+DUPLICATE-AVOIDANCE RULE (HARD CONSTRAINT):
+Your proposed slug + title combined must not share 2 or more topic words with ANY post in the "Recently published" list above. This is enforced post-generation — if you violate it, your output will be rejected. Topic words exclude stopwords like "the/and/of" and the brand words "polymarket/tips/blog/2026/2025/2024". Words like "tracker", "smart", "money", "guide", "follow", "strategy", "trader", "tools" all count as topic words and are heavily reused — be deliberate about creating a distinct angle.
 
-When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Never write a second post on the same keyword as an existing post — check the slug list and the existing-keywords list above. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.
+TODAY'S SPECIAL INSTRUCTION: If "igetlitty polymarket" is in AVAILABLE KEYWORD GAPS, prioritise it — write a trader spotlight post about the Polymarket trader igetlitty.
+
+When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.${rejectionReason ? `\n\nIMPORTANT: Your previous attempt was REJECTED for duplicate overlap. Reason: ${rejectionReason}\nPick a different topic that does not overlap.` : ''}
 
 Today's trending Polymarket markets (sorted by 24h volume, for reference / optional trending hook):
 ${JSON.stringify(markets, null, 2)}
@@ -386,37 +561,62 @@ async function main() {
   const today = new Date().toISOString().slice(0, 10);
   console.log(`Daily blog agent starting for ${today}`);
 
-  const [markets, existingSlugs] = await Promise.all([
+  const [markets, allPosts] = await Promise.all([
     fetchTrendingMarkets(),
-    Promise.resolve(getExistingSlugs()),
+    Promise.resolve(getAllPosts(30)),
   ]);
-  console.log(`Fetched ${markets.length} trending markets. ${existingSlugs.length} existing posts.`);
+  const existingSlugs = allPosts.map(p => p.slug);
+  const recentPosts = allPosts.filter(p => p.isRecent);
+  console.log(`Fetched ${markets.length} trending markets. ${existingSlugs.length} existing posts (${recentPosts.length} within 30 days).`);
 
-  const post = await generatePost({ markets, existingSlugs, today });
+  function validateStructural(post) {
+    const required = ['slug', 'title', 'category', 'metaTitle', 'metaDescription', 'datePublished', 'heroImage', 'heroImageAlt', 'content'];
+    for (const key of required) {
+      if (!post[key]) throw new Error(`Claude response missing field: ${key}`);
+    }
+    if (existingSlugs.includes(post.slug)) {
+      throw new Error(`Claude produced duplicate slug: ${post.slug}`);
+    }
+    if (!/^[a-z0-9-]+$/.test(post.slug)) {
+      throw new Error(`Invalid slug format: ${post.slug}`);
+    }
+    const validCategories = ['market-strategy', 'trader-intelligence', 'polymarket-guides', 'convergence-signals'];
+    if (!validCategories.includes(post.category)) {
+      throw new Error(`Invalid category: ${post.category}`);
+    }
+    if (!post.content.includes('polymarket.com/?r=POLYTips')) {
+      throw new Error('Content missing affiliate link');
+    }
+    if (!post.content.includes('/what-is-a-convergence-signal/')) {
+      throw new Error('Content missing convergence signal internal link');
+    }
+    if (!post.content.includes('/best-polymarket-traders-to-follow-2026/')) {
+      throw new Error('Content missing top traders internal link');
+    }
+  }
 
-  // Validation
-  const required = ['slug', 'title', 'category', 'metaTitle', 'metaDescription', 'datePublished', 'heroImage', 'heroImageAlt', 'content'];
-  for (const key of required) {
-    if (!post[key]) throw new Error(`Claude response missing field: ${key}`);
+  function validateNotDuplicate(post) {
+    const candidate = postTopicWords({ title: post.title, slug: post.slug });
+    const conflict = findOverlappingRecentPost(candidate, recentPosts, 2);
+    if (conflict) {
+      const shared = overlapWords(candidate, conflict.topicWords);
+      throw new DuplicateTopicError(
+        `Proposed "${post.slug}" overlaps with recent post "${conflict.slug}" (${conflict.publishedDate}) on ${shared.length} topic words: ${shared.join(', ')}`
+      );
+    }
   }
-  if (existingSlugs.includes(post.slug)) {
-    throw new Error(`Claude produced duplicate slug: ${post.slug}`);
-  }
-  if (!/^[a-z0-9-]+$/.test(post.slug)) {
-    throw new Error(`Invalid slug format: ${post.slug}`);
-  }
-  const validCategories = ['market-strategy', 'trader-intelligence', 'polymarket-guides', 'convergence-signals'];
-  if (!validCategories.includes(post.category)) {
-    throw new Error(`Invalid category: ${post.category}`);
-  }
-  if (!post.content.includes('polymarket.com/?r=POLYTips')) {
-    throw new Error('Content missing affiliate link');
-  }
-  if (!post.content.includes('/what-is-a-convergence-signal/')) {
-    throw new Error('Content missing convergence signal internal link');
-  }
-  if (!post.content.includes('/best-polymarket-traders-to-follow-2026/')) {
-    throw new Error('Content missing top traders internal link');
+
+  let post = await generatePost({ markets, existingSlugs, today, recentPosts });
+  validateStructural(post);
+  try {
+    validateNotDuplicate(post);
+  } catch (err) {
+    if (!(err instanceof DuplicateTopicError)) throw err;
+    console.warn(`First attempt rejected: ${err.message}`);
+    console.warn('Retrying with explicit rejection context...');
+    post = await generatePost({ markets, existingSlugs, today, recentPosts, rejectionReason: err.message });
+    validateStructural(post);
+    validateNotDuplicate(post); // throws and aborts if still a duplicate
   }
 
   console.log(`Generated post: "${post.title}" (${post.slug})`);
@@ -433,7 +633,13 @@ async function main() {
   console.log(`Done. Post will be live at https://blog.polymarket.tips/${post.slug}/ after Vercel deploys.`);
 }
 
-main().catch(err => {
-  console.error('Agent failed:', err);
-  process.exit(1);
-});
+// Only auto-run when invoked directly, not when imported (e.g. by tests).
+const invokedAsScript = process.argv[1] && path.resolve(process.argv[1]) === __filename;
+if (invokedAsScript) {
+  main().catch(err => {
+    console.error('Agent failed:', err);
+    process.exit(1);
+  });
+}
+
+export { extractTopicWords, postTopicWords, overlapCount, findOverlappingRecentPost, getAllPosts, parseFrontmatter };
