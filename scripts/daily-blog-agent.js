@@ -24,27 +24,35 @@ const IMAGES_DIR = path.join(ROOT, 'public/images/blog');
 const ANTHROPIC_MODEL = 'claude-opus-4-5';
 
 // ---------- Keyword priorities (from Google Search Console) ----------
-// Real Search Console data — terms close to page 1, ordered by priority
+// Real Search Console data — May 12, 2026 snapshot
 const KEYWORD_PRIORITIES = [
-  // TIER 1 — Already ranking 8-15, push these to page 1
-  { keyword: 'polymarket whale tracker', position: 11.5, hasPost: true, slug: 'polymarket-whale-tracker' },
-  { keyword: 'polymarket tracker', position: 11, hasPost: false },
+  // TIER 1 — Already ranking 6-12, close to page 1, consolidate with content
+  { keyword: 'polymarket whale tracker', position: 6.89, hasPost: true, slug: 'polymarket-whale-tracker' },
   { keyword: 'polymarket leaderboard', position: 7.24, hasPost: true, slug: 'polymarket-leaderboard-explained' },
-  { keyword: 'polymarket top traders', position: 6.47, hasPost: true, slug: 'top-polymarket-traders-2026' },
+  { keyword: 'polymarket top traders 2026', position: 6.47, hasPost: true, slug: 'top-polymarket-traders-2026' },
   { keyword: 'polymarket archetype tags', position: 7.47, hasPost: true, slug: 'polymarket-archetype-tags-explained' },
   { keyword: 'best polymarket traders', position: 11.88, hasPost: true, slug: 'best-polymarket-traders-to-follow-2026' },
-  { keyword: 'what is a convergence signal', position: 15.15, hasPost: true, slug: 'what-is-a-convergence-signal' },
+  { keyword: 'polymarket 2026 midterms odds', position: 13.83, hasPost: true, slug: 'polymarket-2026-midterm-elections-prediction-markets' },
+  { keyword: 'polymarket withdrawal guide', position: 10.08, hasPost: true, slug: 'polymarket-withdrawal-guide-how-to-cash-out-2026' },
+  { keyword: 'polymarket bitcoin prediction', position: 6, hasPost: true, slug: 'polymarket-bitcoin-150k-june-2026-prediction-market' },
 
-  // TIER 2 — Getting impressions, no post yet — high opportunity
-  { keyword: 'polymarket trading guide', position: 80, hasPost: false },
-  { keyword: 'convergence trading strategy', position: 81, hasPost: false },
+  // TIER 2 — Getting impressions, need dedicated posts
+  { keyword: 'igetlitty polymarket', position: 6, hasPost: false },
+  { keyword: 'polymarket trading guide', position: 77, hasPost: false },
+  { keyword: 'convergence trading strategy', position: 71.5, hasPost: false },
+  { keyword: 'polymarket tracker', position: 11, hasPost: false },
+  { keyword: 'polymarket 2026 house odds', position: 37, hasPost: false },
+  { keyword: 'polymarket strategy', position: 75, hasPost: false },
+  { keyword: 'recession polymarket', position: 74, hasPost: false },
+
+  // TIER 3 — High value gaps with no impressions yet
+  { keyword: 'how to make money on polymarket', position: null, hasPost: false },
   { keyword: 'polymarket copy trading', position: null, hasPost: false },
-  { keyword: 'how to trade on polymarket', position: null, hasPost: false },
   { keyword: 'polymarket beginner guide', position: null, hasPost: false },
   { keyword: 'polymarket fees explained', position: null, hasPost: false },
-  { keyword: 'polymarket accuracy', position: null, hasPost: false },
   { keyword: 'polymarket vs sports betting', position: null, hasPost: false },
   { keyword: 'prediction market strategy', position: null, hasPost: false },
+  { keyword: 'polymarket accuracy', position: null, hasPost: false },
 ];
 
 // ---------- Polymarket research ----------
@@ -207,12 +215,15 @@ ${keywordGaps.map(k => {
 TERMS WITH EXISTING POSTS (do NOT duplicate these — consider writing a RELATED supporting post only if you have a fresh angle):
 ${keywordExisting.map(k => `- "${k.keyword}" — existing post at /${k.slug}/ — ranking ~${k.position}`).join('\n')}
 
-TOPIC SELECTION RULES:
-1. DEFAULT CHOICE: pick the highest-priority keyword gap (hasPost: false) from above and write a post that targets that exact keyword. Use the keyword in the H1, meta title, meta description, and 3+ times in the body.
-2. If a Tier 2 keyword gap is relevant to today's Polymarket trending data — even better, combine the two angles.
-3. Only write a pure trending/news post if it is genuinely significant breaking news (major price move, major geopolitical event, major Polymarket announcement that is today's story). Timely posts are the exception, not the rule.
-4. Never write a second post on the same keyword as an existing post — check the slug list and the existing-keywords list above.
-5. When targeting a keyword gap, derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.
+TOPIC SELECTION PRIORITY ORDER:
+1. FIRST PRIORITY: Tier 2 keywords with no post yet AND relevant to current Polymarket trends
+2. SECOND PRIORITY: Tier 3 keywords with no post yet — write evergreen guides targeting these
+3. THIRD PRIORITY: Supporting content for Tier 1 posts (help them rank higher with related posts)
+4. LAST RESORT ONLY: Pure trending/timely post — only if it is genuinely major breaking news
+
+TODAY'S SPECIAL INSTRUCTION: If "igetlitty polymarket" has not been covered, write a trader spotlight post about the Polymarket trader igetlitty. This term is already ranking at position 6 with growing search volume — a dedicated post will push it to page 1 quickly.
+
+When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Never write a second post on the same keyword as an existing post — check the slug list and the existing-keywords list above. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.
 
 Today's trending Polymarket markets (sorted by 24h volume, for reference / optional trending hook):
 ${JSON.stringify(markets, null, 2)}
