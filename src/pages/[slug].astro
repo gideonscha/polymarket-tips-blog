@@ -32,8 +32,9 @@ const formattedDate = new Date(post.data.publishedDate).toLocaleDateString('en-U
   day: 'numeric',
 });
 
-// Trailing slash is canonical. Vercel 308-redirects the non-slash form.
-const postUrl = `https://blog.polymarket.tips/${post.id}/`;
+// Non-trailing-slash is canonical (Google preference, May 24 reversal).
+// Vercel 308-redirects the trailing-slash form.
+const postUrl = `https://blog.polymarket.tips/${post.id}`;
 const seoTitle = post.data.metaTitle || post.data.title;
 
 // Resolve OG image: heroImage > ogImage field > default
@@ -82,7 +83,7 @@ const articleSchema = {
     <header class="mb-8">
       <div class="flex items-center gap-3 mb-4">
         <a
-          href={`/category/${post.data.category}/`}
+          href={`/category/${post.data.category}`}
           class="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-500 no-underline hover:bg-amber-500/20"
         >
           {categoryLabels[post.data.category] || post.data.category}
