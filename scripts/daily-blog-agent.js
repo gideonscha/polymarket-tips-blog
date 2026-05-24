@@ -185,6 +185,72 @@ function postTopicWords({ title, slug }) {
   return s;
 }
 
+// Slug-level cross-check (SECONDARY duplicate detector).
+//
+// The topic-word check above misses cases where the discriminating word
+// IS a brand marker. Example:
+//   - existing slug "polymarket-accuracy-how-accurate-are-prediction-markets"
+//   - proposed  slug "polymarket-accuracy-how-reliable"
+// Under the topic-word check (with "polymarket" stopworded) these only
+// share {accuracy} = 1 token, not enough to trigger. But the slugs are
+// clearly the same topic.
+//
+// SLUG_STOPWORDS is intentionally much smaller than STOPWORDS — it keeps
+// "polymarket" so that a shared brand-prefix + one shared discriminator
+// triggers a duplicate. It still drops "prediction"/"market" because those
+// decorate the "polymarket-X-prediction-market" boilerplate across many
+// genuinely distinct topics (iran-prediction-market vs bitcoin-prediction-
+// market would otherwise false-positive).
+const SLUG_STOPWORDS = new Set([
+  // Function words
+  'the','a','an','of','to','in','on','for','with','and','or','by','at','as','is','are','was','were','be',
+  'how','what','why','when','where','who','which','your','our','my',
+  // Year markers
+  '2024','2025','2026','2027','2028',
+  // Boilerplate decorators that appear in many slugs without discriminating
+  'prediction','market','guide','explained','complete','full',
+  // The "tips" brand suffix (in case a slug ever uses it)
+  'tips','blog',
+]);
+
+function slugTokens(slug) {
+  if (!slug) return new Set();
+  return new Set(
+    slug.toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter(Boolean)
+      .map(t => (t.length > 3 && t.endsWith('s')) ? t.slice(0, -1) : t)
+      .filter(t => t.length >= 3 && !SLUG_STOPWORDS.has(t)),
+  );
+}
+
+// Cross-compare proposed title+slug tokens against each existing post's
+// slug under the relaxed SLUG_STOPWORDS list. Catches the case the
+// primary topic-word check misses.
+function findSlugLevelCollision(candidate, recentPosts, threshold = 2) {
+  // Candidate token set draws from both the proposed slug AND title so
+  // we also catch the user-spec case "proposed title contains 2+ words
+  // from an existing slug".
+  const candidateTokens = new Set([
+    ...slugTokens(candidate.slug || ''),
+    ...slugTokens(candidate.title || ''),
+  ]);
+  for (const rp of recentPosts) {
+    const existingTokens = slugTokens(rp.slug);
+    if (overlapCount(candidateTokens, existingTokens) >= threshold) return rp;
+  }
+  return null;
+}
+
+function slugLevelOverlap(candidate, rp) {
+  const a = new Set([
+    ...slugTokens(candidate.slug || ''),
+    ...slugTokens(candidate.title || ''),
+  ]);
+  const b = slugTokens(rp.slug);
+  return overlapWords(a, b);
+}
+
 function overlapCount(setA, setB) {
   let n = 0;
   for (const t of setA) if (setB.has(t)) n++;
@@ -407,8 +473,11 @@ TOPIC SELECTION PRIORITY ORDER:
 3. THIRD PRIORITY: Supporting content for a Tier 1 post — only if your angle's topic words overlap with every recent post by AT MOST ONE
 4. LAST RESORT ONLY: Pure trending/timely post — only if it is genuinely major breaking news AND its topic words do not overlap with any recent post by 2+
 
-DUPLICATE-AVOIDANCE RULE (HARD CONSTRAINT):
-Your proposed slug + title combined must not share 2 or more topic words with ANY post in the "Recently published" list above. This is enforced post-generation — if you violate it, your output will be rejected. Topic words exclude stopwords like "the/and/of" and the brand words "polymarket/tips/blog/2026/2025/2024" and the brand-frame phrase "smart money" (which is collapsed and ignored). Almost everything else counts.
+DUPLICATE-AVOIDANCE RULES (HARD CONSTRAINTS — both enforced post-generation):
+
+Rule 1 — Topic-word overlap. Your proposed slug + title combined must not share 2 or more topic words with ANY post in the "Recently published" list above. Topic words exclude stopwords like "the/and/of" and the brand words "polymarket/tips/blog/2026/2025/2024" and the brand-frame phrase "smart money" (which is collapsed and ignored). Almost everything else counts.
+
+Rule 2 — Slug-level cross-check. Your proposed slug + title must not share 2 or more SLUG-LEVEL tokens with ANY existing post's slug (not just recent — ALL posts). Slug-level tokens are stricter: they DO count "polymarket" itself. This means: if your slug is "polymarket-X-..." and any existing slug is "polymarket-X-..." you've already burned one of your two allowed tokens. Pick a unique discriminator. Boilerplate decorators (prediction, market, guide, explained, complete, full, year markers) are still ignored, so e.g. "polymarket-iran-prediction-market" vs "polymarket-bitcoin-prediction-market" do NOT collide on those.
 
 OVERUSED WORDS — appear in 3+ recent posts, very high collision risk:
 ${overusedWords.length ? overusedWords.join(', ') : '(none yet)'}
@@ -618,12 +687,29 @@ async function main() {
   }
 
   function validateNotDuplicate(post) {
+    // Primary check: title+slug topic-word overlap with brand markers stripped.
     const candidate = postTopicWords({ title: post.title, slug: post.slug });
     const conflict = findOverlappingRecentPost(candidate, recentPosts, 2);
     if (conflict) {
       const shared = overlapWords(candidate, conflict.topicWords);
       throw new DuplicateTopicError(
         `Proposed "${post.slug}" overlaps with recent post "${conflict.slug}" (${conflict.publishedDate}) on ${shared.length} topic words: ${shared.join(', ')}`
+      );
+    }
+    // Secondary check: slug-level cross-comparison with a less aggressive
+    // stopword list (keeps "polymarket"). Catches the case where the
+    // discriminating word is "polymarket-X" and X alone wouldn't trigger.
+    // Runs against ALL existing posts, not just recent — slug collisions
+    // are bad regardless of age.
+    const slugConflict = findSlugLevelCollision(
+      { title: post.title, slug: post.slug },
+      allPosts,
+      2,
+    );
+    if (slugConflict) {
+      const shared = slugLevelOverlap({ title: post.title, slug: post.slug }, slugConflict);
+      throw new DuplicateTopicError(
+        `Proposed "${post.slug}" shares slug-level tokens with existing post "${slugConflict.slug}" (${slugConflict.publishedDate}): ${shared.join(', ')}`
       );
     }
   }
@@ -678,4 +764,13 @@ if (invokedAsScript) {
   });
 }
 
-export { extractTopicWords, postTopicWords, overlapCount, findOverlappingRecentPost, getAllPosts, parseFrontmatter };
+export {
+  extractTopicWords,
+  postTopicWords,
+  overlapCount,
+  findOverlappingRecentPost,
+  slugTokens,
+  findSlugLevelCollision,
+  getAllPosts,
+  parseFrontmatter,
+};

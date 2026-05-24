@@ -12,6 +12,8 @@ import {
   postTopicWords,
   overlapCount,
   findOverlappingRecentPost,
+  slugTokens,
+  findSlugLevelCollision,
   getAllPosts,
 } from './daily-blog-agent.js';
 
@@ -111,5 +113,54 @@ if (igetlittyConflict) {
   console.log(`     igetlitty topic conflicted with /${igetlittyConflict.slug}/, shared: ${[...igetlitty].filter(w => igetlittyConflict.topicWords.has(w)).join(', ')}`);
 }
 assert(igetlittyConflict === null, `igetlitty wallet spotlight (distinct framing) should be SAFE`);
+
+// --- Slug-level cross-check tests (secondary detector) ---
+
+// The original user-spec example: the topic-word check misses this because
+// "polymarket" is stopworded, leaving only {accuracy} as shared (1 < 2).
+// The slug-level check keeps "polymarket" and catches it.
+const existingAccuracy = {
+  slug: 'polymarket-accuracy-how-accurate-are-prediction-markets',
+  title: 'How Accurate is Polymarket? A Track Record Analysis',
+  publishedDate: '2026-04-16',
+};
+const proposedAccuracy = {
+  slug: 'polymarket-accuracy-how-reliable',
+  title: 'Polymarket Accuracy: How Reliable Are These Predictions?',
+};
+const accuracyShared = overlapCount(
+  new Set([...slugTokens(proposedAccuracy.slug), ...slugTokens(proposedAccuracy.title)]),
+  slugTokens(existingAccuracy.slug),
+);
+assert(accuracyShared >= 2, `slug-level accuracy duplicate should be flagged (got ${accuracyShared})`);
+
+// Iran prediction market vs Bitcoin prediction market — SHOULD NOT collide
+// at the slug level despite sharing the "polymarket-X-prediction-market"
+// boilerplate, because "prediction"/"market" are in SLUG_STOPWORDS.
+const ironBitcoinConflict = findSlugLevelCollision(
+  {
+    slug: 'polymarket-bitcoin-150k-june-2026-prediction-market',
+    title: 'Polymarket Bitcoin $150K June 2026 Prediction Market',
+  },
+  [{ slug: 'polymarket-iran-ceasefire-prediction-market-2026', topicWords: new Set() }],
+  2,
+);
+assert(ironBitcoinConflict === null, `iran vs bitcoin should not collide at slug level (got conflict: ${ironBitcoinConflict?.slug})`);
+
+// Real-world: against ALL current posts, proposing yet another
+// "polymarket-fees-..." post should be caught by the slug-level check.
+const allPostsForCheck = getAllPosts(365);
+const feesConflict = findSlugLevelCollision(
+  {
+    slug: 'polymarket-fees-explained-all-platforms-cost-comparison',
+    title: 'Polymarket Fees Explained: Comparing All Platforms',
+  },
+  allPostsForCheck,
+  2,
+);
+assert(feesConflict !== null, `proposing another polymarket-fees-... post should be flagged (existing post on fees)`);
+if (feesConflict) {
+  console.log(`     -> caught against /${feesConflict.slug}/`);
+}
 
 console.log('\nAll duplicate-detection tests passed.');
