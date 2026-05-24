@@ -24,35 +24,38 @@ const IMAGES_DIR = path.join(ROOT, 'public/images/blog');
 const ANTHROPIC_MODEL = 'claude-opus-4-5';
 
 // ---------- Keyword priorities (from Google Search Console) ----------
-// Real Search Console data — May 12, 2026 snapshot
+// Real Search Console data — May 24, 2026 snapshot
 const KEYWORD_PRIORITIES = [
-  // TIER 1 — Already ranking 6-12, close to page 1, consolidate with content
+  // TIER 1 — Existing posts, already ranking, consolidating via canonical fix
   { keyword: 'polymarket whale tracker', position: 6.89, hasPost: true, slug: 'polymarket-whale-tracker' },
-  { keyword: 'polymarket leaderboard', position: 7.24, hasPost: true, slug: 'polymarket-leaderboard-explained' },
+  { keyword: 'polymarket leaderboard', position: 7.32, hasPost: true, slug: 'polymarket-leaderboard-explained' },
   { keyword: 'polymarket top traders 2026', position: 6.47, hasPost: true, slug: 'top-polymarket-traders-2026' },
   { keyword: 'polymarket archetype tags', position: 7.47, hasPost: true, slug: 'polymarket-archetype-tags-explained' },
-  { keyword: 'best polymarket traders', position: 11.88, hasPost: true, slug: 'best-polymarket-traders-to-follow-2026' },
-  { keyword: 'polymarket 2026 midterms odds', position: 13.83, hasPost: true, slug: 'polymarket-2026-midterm-elections-prediction-markets' },
-  { keyword: 'polymarket withdrawal guide', position: 10.08, hasPost: true, slug: 'polymarket-withdrawal-guide-how-to-cash-out-2026' },
-  { keyword: 'polymarket bitcoin prediction', position: 6, hasPost: true, slug: 'polymarket-bitcoin-150k-june-2026-prediction-market' },
+  { keyword: 'best polymarket traders', position: 16.21, hasPost: true, slug: 'best-polymarket-traders-to-follow-2026' },
+  { keyword: 'polymarket 2026 midterms', position: 15.27, hasPost: true, slug: 'polymarket-2026-midterm-elections-prediction-markets' },
+  { keyword: 'polymarket withdrawal guide', position: 12.52, hasPost: true, slug: 'polymarket-withdrawal-guide-how-to-cash-out-2026' },
+  { keyword: 'polymarket copy trading', position: 13.33, hasPost: true, slug: 'polymarket-copy-trading-how-to-follow-top-traders' },
+  { keyword: 'igetlitty polymarket', position: 6.62, hasPost: true, slug: 'igetlitty-polymarket-success-story' },
 
-  // TIER 2 — Getting impressions, need dedicated posts
-  { keyword: 'igetlitty polymarket', position: 6, hasPost: false },
-  { keyword: 'polymarket trading guide', position: 77, hasPost: false },
-  { keyword: 'convergence trading strategy', position: 71.5, hasPost: false },
-  { keyword: 'polymarket tracker', position: 11, hasPost: false },
-  { keyword: 'polymarket 2026 house odds', position: 37, hasPost: false },
-  { keyword: 'polymarket strategy', position: 75, hasPost: false },
-  { keyword: 'recession polymarket', position: 74, hasPost: false },
+  // TIER 2 — Getting impressions, need dedicated or stronger posts — HIGH PRIORITY
+  { keyword: 'polymarket withdrawal problems 2026', position: 5.0, hasPost: false },
+  { keyword: 'gravia_001 polymarket', position: 9.29, hasPost: false },
+  { keyword: 'polymarket app ios android', position: 47.36, hasPost: false },
+  { keyword: 'polymarket ipo 2026', position: 18.0, hasPost: false },
+  { keyword: 'polymarket signals', position: 63.0, hasPost: false },
+  { keyword: 'polymarket smart money tracking', position: 12.0, hasPost: false },
+  { keyword: 'recession probability 2026', position: 19.0, hasPost: false },
+  { keyword: 'polymarket house control 2026', position: 39.0, hasPost: false },
+  { keyword: 'convergence trading strategy', position: 71.33, hasPost: false },
+  { keyword: 'polymarket trading tips', position: 11.0, hasPost: false },
 
-  // TIER 3 — High value gaps with no impressions yet
+  // TIER 3 — High value evergreen gaps, no impressions yet
   { keyword: 'how to make money on polymarket', position: null, hasPost: false },
-  { keyword: 'polymarket copy trading', position: null, hasPost: false },
-  { keyword: 'polymarket beginner guide', position: null, hasPost: false },
   { keyword: 'polymarket fees explained', position: null, hasPost: false },
   { keyword: 'polymarket vs sports betting', position: null, hasPost: false },
-  { keyword: 'prediction market strategy', position: null, hasPost: false },
-  { keyword: 'polymarket accuracy', position: null, hasPost: false },
+  { keyword: 'polymarket accuracy track record', position: null, hasPost: false },
+  { keyword: 'prediction market strategy guide', position: null, hasPost: false },
+  { keyword: 'polymarket beginner guide', position: null, hasPost: false },
 ];
 
 // ---------- Polymarket research ----------
@@ -411,7 +414,11 @@ OVERUSED WORDS — appear in 3+ recent posts, very high collision risk:
 ${overusedWords.length ? overusedWords.join(', ') : '(none yet)'}
 Reusing two of these in your title/slug is the #1 source of duplicate rejections. Use AT MOST ONE of them. Reach for fresher framing instead.
 
-TODAY'S SPECIAL INSTRUCTION: If "igetlitty polymarket" is in AVAILABLE KEYWORD GAPS, prioritise it — write a trader spotlight post about the Polymarket trader igetlitty.
+TODAY'S SPECIAL INSTRUCTIONS (in priority order):
+1. If "gravia_001 polymarket" has no post — write a trader spotlight about gravia_001 (same format as igetlitty-polymarket-success-story)
+2. If "polymarket withdrawal problems 2026" has no dedicated post — write a detailed guide covering KYC requirements, common withdrawal errors, processing times, and how to resolve issues
+3. If "polymarket app ios android" has no strong dedicated post — write a comprehensive mobile app guide
+Do not duplicate any of the above if posts already exist for them.
 
 When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.${rejectionReason ? `\n\nIMPORTANT: Your previous attempt was REJECTED for duplicate overlap. Reason: ${rejectionReason}\nPick a different topic that does not overlap.` : ''}
 
