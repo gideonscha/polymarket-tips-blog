@@ -13,6 +13,7 @@ import {
   overlapCount,
   findOverlappingRecentPost,
   slugTokens,
+  slugPrefix,
   findSlugLevelCollision,
   getAllPosts,
 } from './daily-blog-agent.js';
@@ -114,41 +115,41 @@ if (igetlittyConflict) {
 }
 assert(igetlittyConflict === null, `igetlitty wallet spotlight (distinct framing) should be SAFE`);
 
-// --- Slug-level cross-check tests (secondary detector) ---
+// --- Slug-prefix collision tests (secondary detector) ---
 
-// The original user-spec example: the topic-word check misses this because
-// "polymarket" is stopworded, leaving only {accuracy} as shared (1 < 2).
-// The slug-level check keeps "polymarket" and catches it.
-const existingAccuracy = {
-  slug: 'polymarket-accuracy-how-accurate-are-prediction-markets',
-  title: 'How Accurate is Polymarket? A Track Record Analysis',
-  publishedDate: '2026-04-16',
-};
-const proposedAccuracy = {
-  slug: 'polymarket-accuracy-how-reliable',
-  title: 'Polymarket Accuracy: How Reliable Are These Predictions?',
-};
-const accuracyShared = overlapCount(
-  new Set([...slugTokens(proposedAccuracy.slug), ...slugTokens(proposedAccuracy.title)]),
-  slugTokens(existingAccuracy.slug),
+// User-spec example: same leading discriminator after "polymarket-".
+assert(
+  slugPrefix('polymarket-accuracy-how-accurate-are-prediction-markets', 2)
+    === slugPrefix('polymarket-accuracy-how-reliable', 2),
+  'accuracy variants must share slug prefix-2',
 );
-assert(accuracyShared >= 2, `slug-level accuracy duplicate should be flagged (got ${accuracyShared})`);
 
-// Iran prediction market vs Bitcoin prediction market — SHOULD NOT collide
-// at the slug level despite sharing the "polymarket-X-prediction-market"
-// boilerplate, because "prediction"/"market" are in SLUG_STOPWORDS.
-const ironBitcoinConflict = findSlugLevelCollision(
-  {
-    slug: 'polymarket-bitcoin-150k-june-2026-prediction-market',
-    title: 'Polymarket Bitcoin $150K June 2026 Prediction Market',
-  },
-  [{ slug: 'polymarket-iran-ceasefire-prediction-market-2026', topicWords: new Set() }],
-  2,
+// Iran vs Bitcoin: same "polymarket" brand prefix but different
+// discriminators. Should NOT collide.
+assert(
+  slugPrefix('polymarket-iran-ceasefire-prediction-market-2026', 2)
+    !== slugPrefix('polymarket-bitcoin-150k-june-2026-prediction-market', 2),
+  'iran vs bitcoin must NOT share slug prefix-2',
 );
-assert(ironBitcoinConflict === null, `iran vs bitcoin should not collide at slug level (got conflict: ${ironBitcoinConflict?.slug})`);
+
+// Real-world false-positive case from production (May 25 failure):
+// gravia-001 spotlight vs best-polymarket-traders should NOT collide.
+assert(
+  slugPrefix('gravia-001-polymarket-trader-spotlight', 2)
+    !== slugPrefix('best-polymarket-traders-to-follow-2026', 2),
+  'gravia spotlight vs best-traders must NOT share slug prefix-2',
+);
+
+// Withdrawal vs deposit (different discriminators) — also a May 25
+// false-positive. Should NOT collide.
+assert(
+  slugPrefix('polymarket-withdrawal-problems-2026-troubleshooting', 2)
+    !== slugPrefix('polymarket-deposit-methods-how-to-fund-your-account-2026', 2),
+  'withdrawal vs deposit must NOT share slug prefix-2',
+);
 
 // Real-world: against ALL current posts, proposing yet another
-// "polymarket-fees-..." post should be caught by the slug-level check.
+// "polymarket-fees-..." post should be caught by the slug-prefix check.
 const allPostsForCheck = getAllPosts(365);
 const feesConflict = findSlugLevelCollision(
   {
@@ -156,11 +157,34 @@ const feesConflict = findSlugLevelCollision(
     title: 'Polymarket Fees Explained: Comparing All Platforms',
   },
   allPostsForCheck,
-  2,
 );
-assert(feesConflict !== null, `proposing another polymarket-fees-... post should be flagged (existing post on fees)`);
+assert(feesConflict !== null, `proposing another polymarket-fees-... post should be flagged`);
 if (feesConflict) {
   console.log(`     -> caught against /${feesConflict.slug}/`);
 }
+
+// And proposing a genuinely new "polymarket-X-..." topic where X is not
+// already used should PASS.
+const newDiscriminatorConflict = findSlugLevelCollision(
+  {
+    slug: 'polymarket-orderbook-depth-edge-detection-guide',
+    title: 'Polymarket Order Book Depth: Spotting Mispricings',
+  },
+  allPostsForCheck,
+);
+assert(newDiscriminatorConflict === null,
+  `polymarket-orderbook-... should pass (got conflict: ${newDiscriminatorConflict?.slug})`);
+
+// And gravia_001 spotlight should pass even though "polymarket" + "trader"
+// appear in many other slugs.
+const graviaConflict = findSlugLevelCollision(
+  {
+    slug: 'gravia-001-polymarket-trader-spotlight',
+    title: 'gravia_001 Polymarket Trader Spotlight',
+  },
+  allPostsForCheck,
+);
+assert(graviaConflict === null,
+  `gravia spotlight should pass (got conflict: ${graviaConflict?.slug})`);
 
 console.log('\nAll duplicate-detection tests passed.');

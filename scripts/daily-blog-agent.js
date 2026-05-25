@@ -213,42 +213,58 @@ const SLUG_STOPWORDS = new Set([
   'tips','blog',
 ]);
 
-function slugTokens(slug) {
-  if (!slug) return new Set();
-  return new Set(
-    slug.toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter(Boolean)
-      .map(t => (t.length > 3 && t.endsWith('s')) ? t.slice(0, -1) : t)
-      .filter(t => t.length >= 3 && !SLUG_STOPWORDS.has(t)),
-  );
+// Ordered list of slug tokens after stopword filter + crude singularisation.
+function slugTokenList(slug) {
+  if (!slug) return [];
+  return slug.toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map(t => (t.length > 3 && t.endsWith('s')) ? t.slice(0, -1) : t)
+    .filter(t => t.length >= 3 && !SLUG_STOPWORDS.has(t));
 }
 
-// Cross-compare proposed title+slug tokens against each existing post's
-// slug under the relaxed SLUG_STOPWORDS list. Catches the case the
-// primary topic-word check misses.
-function findSlugLevelCollision(candidate, recentPosts, threshold = 2) {
-  // Candidate token set draws from both the proposed slug AND title so
-  // we also catch the user-spec case "proposed title contains 2+ words
-  // from an existing slug".
-  const candidateTokens = new Set([
-    ...slugTokens(candidate.slug || ''),
-    ...slugTokens(candidate.title || ''),
-  ]);
-  for (const rp of recentPosts) {
-    const existingTokens = slugTokens(rp.slug);
-    if (overlapCount(candidateTokens, existingTokens) >= threshold) return rp;
+// Set form for back-compat with tests + topic-style overlap.
+function slugTokens(slug) {
+  return new Set(slugTokenList(slug));
+}
+
+// The first N discriminating tokens of a slug, joined with '-'. This is
+// the strongest duplicate signal: if two slugs share their leading
+// discriminator pair, they're almost always the same topic regardless
+// of whatever boilerplate trails (e.g. "polymarket-accuracy-how-accurate"
+// and "polymarket-accuracy-how-reliable" both have prefix-2
+// "polymarket-accuracy").
+function slugPrefix(slug, n = 2) {
+  return slugTokenList(slug).slice(0, n).join('-');
+}
+
+// Cross-compare the proposed slug against each existing post's slug
+// using the prefix-2 rule. This deliberately ignores the title — the
+// title is human prose that often shares decorator words with unrelated
+// posts (e.g. "Polymarket Trader Spotlight" vs "Top Polymarket Traders"
+// share {polymarket, trader} but are distinct topics).
+//
+// The prefix-2 rule catches genuine slug-level duplicates without that
+// false-positive surface:
+//   - polymarket-accuracy-how-accurate vs polymarket-accuracy-how-reliable
+//     -> both prefix-2 "polymarket-accuracy"  -> COLLIDE
+//   - gravia-001-polymarket-trader vs best-polymarket-traders-to-follow
+//     -> prefixes "gravia-001" vs "best-polymarket" -> DISTINCT
+//   - polymarket-iran-ceasefire vs polymarket-bitcoin-prediction
+//     -> prefixes "polymarket-iran" vs "polymarket-bitcoin" -> DISTINCT
+function findSlugLevelCollision(candidate, existingPosts, _threshold = 2) {
+  const candidatePrefix = slugPrefix(candidate.slug || '', 2);
+  if (!candidatePrefix) return null;
+  for (const rp of existingPosts) {
+    if (slugPrefix(rp.slug, 2) === candidatePrefix) return rp;
   }
   return null;
 }
 
 function slugLevelOverlap(candidate, rp) {
-  const a = new Set([
-    ...slugTokens(candidate.slug || ''),
-    ...slugTokens(candidate.title || ''),
-  ]);
-  const b = slugTokens(rp.slug);
-  return overlapWords(a, b);
+  // For diagnostic output in the rejection message — return the
+  // (prefix-2) tokens that matched.
+  return slugTokenList(candidate.slug || '').slice(0, 2);
 }
 
 function overlapCount(setA, setB) {
@@ -477,7 +493,15 @@ DUPLICATE-AVOIDANCE RULES (HARD CONSTRAINTS — both enforced post-generation):
 
 Rule 1 — Topic-word overlap. Your proposed slug + title combined must not share 2 or more topic words with ANY post in the "Recently published" list above. Topic words exclude stopwords like "the/and/of" and the brand words "polymarket/tips/blog/2026/2025/2024" and the brand-frame phrase "smart money" (which is collapsed and ignored). Almost everything else counts.
 
-Rule 2 — Slug-level cross-check. Your proposed slug + title must not share 2 or more SLUG-LEVEL tokens with ANY existing post's slug (not just recent — ALL posts). Slug-level tokens are stricter: they DO count "polymarket" itself. This means: if your slug is "polymarket-X-..." and any existing slug is "polymarket-X-..." you've already burned one of your two allowed tokens. Pick a unique discriminator. Boilerplate decorators (prediction, market, guide, explained, complete, full, year markers) are still ignored, so e.g. "polymarket-iran-prediction-market" vs "polymarket-bitcoin-prediction-market" do NOT collide on those.
+Rule 2 — Slug-prefix collision check. The first TWO discriminating tokens of your slug ("slug prefix") must not match the first two discriminating tokens of any existing post's slug (ALL posts, not just recent). Boilerplate decorators (prediction, market, guide, explained, complete, full, year markers, function words) are skipped when computing the prefix.
+
+Examples:
+- "polymarket-accuracy-how-accurate-..." and "polymarket-accuracy-how-reliable" both have prefix "polymarket-accuracy" -> COLLIDE
+- "polymarket-iran-..." and "polymarket-bitcoin-..." have prefixes "polymarket-iran" vs "polymarket-bitcoin" -> DISTINCT, fine
+- "gravia-001-polymarket-..." and "best-polymarket-traders-..." have prefixes "gravia-001" vs "best-polymarket" -> DISTINCT, fine
+- "polymarket-withdrawal-..." and "polymarket-deposit-..." have prefixes "polymarket-withdrawal" vs "polymarket-deposit" -> DISTINCT, fine
+
+This rule still requires you to pick a unique leading discriminator. If you're writing about a topic in the "polymarket-X-..." namespace, make sure no existing slug already uses your X.
 
 OVERUSED WORDS — appear in 3+ recent posts, very high collision risk:
 ${overusedWords.length ? overusedWords.join(', ') : '(none yet)'}
@@ -707,9 +731,9 @@ async function main() {
       2,
     );
     if (slugConflict) {
-      const shared = slugLevelOverlap({ title: post.title, slug: post.slug }, slugConflict);
+      const prefix = slugPrefix(post.slug, 2);
       throw new DuplicateTopicError(
-        `Proposed "${post.slug}" shares slug-level tokens with existing post "${slugConflict.slug}" (${slugConflict.publishedDate}): ${shared.join(', ')}`
+        `Proposed "${post.slug}" shares slug prefix "${prefix}" with existing post "${slugConflict.slug}" (${slugConflict.publishedDate}). Pick a different leading discriminator after the brand prefix.`
       );
     }
   }
@@ -770,6 +794,8 @@ export {
   overlapCount,
   findOverlappingRecentPost,
   slugTokens,
+  slugTokenList,
+  slugPrefix,
   findSlugLevelCollision,
   getAllPosts,
   parseFrontmatter,
