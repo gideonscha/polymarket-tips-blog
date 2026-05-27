@@ -669,36 +669,37 @@ function gitCommitAndPush(post) {
 // ---------- Main ----------
 
 async function main() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    throw new Error('ANTHROPIC_API_KEY environment variable is required');
-  }
-
   const today = new Date().toISOString().slice(0, 10);
   console.log(`Daily blog agent starting for ${today}`);
 
-  const [markets, allPosts] = await Promise.all([
-    fetchTrendingMarkets(),
-    Promise.resolve(getAllPosts(30)),
-  ]);
-  const existingSlugs = allPosts.map(p => p.slug);
-  const recentPosts = allPosts.filter(p => p.isRecent);
-  console.log(`Fetched ${markets.length} trending markets. ${existingSlugs.length} existing posts (${recentPosts.length} within 30 days).`);
-
-  // Idempotency guard: if a post has already been published with today's
-  // publishedDate, exit cleanly. The workflow has two scheduled ticks per
-  // day (primary at 09:17 UTC, fallback at 14:42 UTC). The fallback is a
-  // no-op when the primary already succeeded. Manual workflow_dispatch
-  // runs bypass this guard via FORCE_RUN=1 so we can still re-run on demand.
+  // Idempotency guard runs FIRST — before any API calls. If a post has
+  // already been published with today's publishedDate, exit cleanly.
+  // The workflow has two scheduled ticks per day (primary at 09:17 UTC,
+  // fallback at 14:42 UTC). The fallback is a no-op (no API spend) when
+  // the primary already succeeded. workflow_dispatch can override via
+  // FORCE_RUN=1.
+  const allPostsForGuard = getAllPosts(30);
   if (process.env.FORCE_RUN !== '1') {
-    const alreadyPublishedToday = allPosts.some(p => p.publishedDate === today);
-    if (alreadyPublishedToday) {
-      const sameDay = allPosts.filter(p => p.publishedDate === today).map(p => p.slug);
+    const sameDay = allPostsForGuard.filter(p => p.publishedDate === today).map(p => p.slug);
+    if (sameDay.length > 0) {
       console.log(`Already published today (${today}): ${sameDay.join(', ')}. Set FORCE_RUN=1 to override.`);
       return;
     }
   } else {
     console.log('FORCE_RUN=1 — bypassing same-day idempotency guard.');
   }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('ANTHROPIC_API_KEY environment variable is required');
+  }
+
+  const [markets, allPosts] = await Promise.all([
+    fetchTrendingMarkets(),
+    Promise.resolve(allPostsForGuard),
+  ]);
+  const existingSlugs = allPosts.map(p => p.slug);
+  const recentPosts = allPosts.filter(p => p.isRecent);
+  console.log(`Fetched ${markets.length} trending markets. ${existingSlugs.length} existing posts (${recentPosts.length} within 30 days).`);
 
   function validateStructural(post) {
     const required = ['slug', 'title', 'category', 'metaTitle', 'metaDescription', 'datePublished', 'heroImage', 'heroImageAlt', 'content'];

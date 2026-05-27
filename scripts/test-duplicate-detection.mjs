@@ -175,16 +175,17 @@ const newDiscriminatorConflict = findSlugLevelCollision(
 assert(newDiscriminatorConflict === null,
   `polymarket-orderbook-... should pass (got conflict: ${newDiscriminatorConflict?.slug})`);
 
-// And gravia_001 spotlight should pass even though "polymarket" + "trader"
-// appear in many other slugs.
-const graviaConflict = findSlugLevelCollision(
+// A trader spotlight on a NEW named wallet (no existing post) should pass
+// even though "polymarket" + "trader" appear in many other slugs. (Using a
+// hypothetical wallet name so the test isn't fragile against new real posts.)
+const traderSpotlightConflict = findSlugLevelCollision(
   {
-    slug: 'gravia-001-polymarket-trader-spotlight',
-    title: 'gravia_001 Polymarket Trader Spotlight',
+    slug: 'fenrir-9000-polymarket-trader-spotlight',
+    title: 'fenrir_9000 Polymarket Trader Spotlight',
   },
   allPostsForCheck,
 );
-assert(graviaConflict === null,
-  `gravia spotlight should pass (got conflict: ${graviaConflict?.slug})`);
+assert(traderSpotlightConflict === null,
+  `new named-wallet trader spotlight should pass (got conflict: ${traderSpotlightConflict?.slug})`);
 
 console.log('\nAll duplicate-detection tests passed.');
