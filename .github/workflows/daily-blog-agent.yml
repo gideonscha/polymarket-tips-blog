@@ -2,8 +2,15 @@ name: Daily Blog Agent
 
 on:
   schedule:
-    # 09:00 UTC daily
-    - cron: '0 9 * * *'
+    # Primary tick at 09:17 UTC daily. Off-the-hour minutes are much less
+    # likely to be skipped by GitHub Actions than the popular :00 slot,
+    # which is heavily oversubscribed and frequently dropped under load.
+    - cron: '17 9 * * *'
+    # Fallback tick at 14:42 UTC, ~5.5h later. The agent is idempotent
+    # within a calendar day — if the primary tick already published, the
+    # fallback exits cleanly without generating a duplicate. If the
+    # primary was skipped, the fallback catches up.
+    - cron: '42 14 * * *'
   workflow_dispatch:
 
 permissions:

@@ -684,6 +684,22 @@ async function main() {
   const recentPosts = allPosts.filter(p => p.isRecent);
   console.log(`Fetched ${markets.length} trending markets. ${existingSlugs.length} existing posts (${recentPosts.length} within 30 days).`);
 
+  // Idempotency guard: if a post has already been published with today's
+  // publishedDate, exit cleanly. The workflow has two scheduled ticks per
+  // day (primary at 09:17 UTC, fallback at 14:42 UTC). The fallback is a
+  // no-op when the primary already succeeded. Manual workflow_dispatch
+  // runs bypass this guard via FORCE_RUN=1 so we can still re-run on demand.
+  if (process.env.FORCE_RUN !== '1') {
+    const alreadyPublishedToday = allPosts.some(p => p.publishedDate === today);
+    if (alreadyPublishedToday) {
+      const sameDay = allPosts.filter(p => p.publishedDate === today).map(p => p.slug);
+      console.log(`Already published today (${today}): ${sameDay.join(', ')}. Set FORCE_RUN=1 to override.`);
+      return;
+    }
+  } else {
+    console.log('FORCE_RUN=1 — bypassing same-day idempotency guard.');
+  }
+
   function validateStructural(post) {
     const required = ['slug', 'title', 'category', 'metaTitle', 'metaDescription', 'datePublished', 'heroImage', 'heroImageAlt', 'content'];
     for (const key of required) {
