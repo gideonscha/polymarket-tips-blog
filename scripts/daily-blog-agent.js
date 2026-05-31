@@ -971,8 +971,9 @@ async function main() {
     }
   }
 
-  function validateNotDuplicate(post) {
-    // Primary check: title+slug topic-word overlap with brand markers stripped.
+  // Topic-word overlap check: title+slug topic-word overlap with brand
+  // markers stripped, against recent posts.
+  function checkTopicWordDup(post) {
     const candidate = postTopicWords({ title: post.title, slug: post.slug });
     const conflict = findOverlappingRecentPost(candidate, recentPosts, 2);
     if (conflict) {
@@ -981,11 +982,11 @@ async function main() {
         `Proposed "${post.slug}" overlaps with recent post "${conflict.slug}" (${conflict.publishedDate}) on ${shared.length} topic words: ${shared.join(', ')}`
       );
     }
-    // Secondary check: slug-level cross-comparison with a less aggressive
-    // stopword list (keeps "polymarket"). Catches the case where the
-    // discriminating word is "polymarket-X" and X alone wouldn't trigger.
-    // Runs against ALL existing posts, not just recent — slug collisions
-    // are bad regardless of age.
+  }
+
+  // Slug-prefix collision check: the first two discriminating slug tokens
+  // must be unique across ALL existing posts (not just recent).
+  function checkSlugPrefixDup(post) {
     const slugConflict = findSlugLevelCollision(
       { title: post.title, slug: post.slug },
       allPosts,
@@ -997,6 +998,22 @@ async function main() {
         `Proposed "${post.slug}" shares slug prefix "${prefix}" with existing post "${slugConflict.slug}" (${slugConflict.publishedDate}). Pick a different leading discriminator after the brand prefix.`
       );
     }
+  }
+
+  // Normal posts must pass both checks.
+  function validateNotDuplicate(post) {
+    checkTopicWordDup(post);
+    checkSlugPrefixDup(post);
+  }
+
+  // Spotlight posts are intentionally templated ("[Name] on Polymarket:
+  // Trading Strategy, Win Rate & Track Record Analysis"), so they share
+  // generic topic words with every other spotlight by design. Their
+  // uniqueness is the trader name, captured by the slug prefix
+  // ("[name]-polymarket"). So spotlights are deduped by the slug-prefix
+  // check only — plus the already-spotlighted guard applied at selection.
+  function validateSpotlightNotDuplicate(post) {
+    checkSlugPrefixDup(post);
   }
 
   let post = null;
@@ -1019,7 +1036,7 @@ async function main() {
         const candidate = await generateSpotlightPost({ trader, today });
         validateStructural(candidate);
         try {
-          validateNotDuplicate(candidate);
+          validateSpotlightNotDuplicate(candidate);
           post = candidate;
         } catch (err) {
           if (!(err instanceof DuplicateTopicError)) throw err;
