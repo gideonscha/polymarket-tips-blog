@@ -58,6 +58,57 @@ const KEYWORD_PRIORITIES = [
   { keyword: 'polymarket beginner guide', position: null, hasPost: false },
 ];
 
+// ---------- Trader spotlight ----------
+// Trader-name searches are low-competition / high-intent. The gravia_001
+// spotlight reached Google position ~1.7 within weeks. We publish ONE
+// spotlight per week, selecting the highest-ranked ELIGIBLE trader on the
+// live leaderboard who has not already been profiled.
+const SPOTLIGHT_DAY = 1; // Monday (0=Sun,1=Mon,...). Override with SPOTLIGHT_FORCE=1.
+
+// Live leaderboard data source (public, no auth). Returns { updatedAt, traders[] }.
+const LEADERBOARD_URL = 'https://kfiizygdnlgffjdyzfxj.supabase.co/functions/v1/public-leaderboard';
+
+// Seed list of trader names already getting Google impressions. When one of
+// these is eligible AND present on the live leaderboard it is preferred over
+// a higher-ranked but unsearched trader (proven search demand). Otherwise
+// selection falls back to pure leaderboard rank among eligible traders.
+const SPOTLIGHT_CANDIDATES = [
+  'drpufferfish',
+  'swisstony',
+  'gator',
+  'bossoskil1',
+  'rn1',
+  'CemeterySun',
+  'Countryside',
+  'RevengeProsper',
+  'Punisher2022',
+  'tradecraft',
+];
+
+// Brand-safety denylist (lowercased substrings). Matching ANY substring
+// rejects the trader. The cost of a false reject is merely skipping to the
+// next eligible trader, so this is deliberately aggressive — far better to
+// skip a borderline name than autonomously publish an off-brand post.
+const NAME_DENYLIST = [
+  // Religion / ethnicity / nationality used as identity labels
+  'jewish', 'jew', 'muslim', 'islam', 'islamic', 'christian', 'catholic', 'protestant',
+  'hindu', 'buddhist', 'mormon', 'zionist', 'arab', 'negro', 'negroid', 'latina', 'latino',
+  'hispanic', 'asian', 'african', 'caucasian', 'aryan', 'nazi', 'hitler', 'kkk', 'isis', 'jihad',
+  // Sexual / explicit
+  'sex', 'porn', 'vagina', 'penis', 'boob', 'tits', 'titty', 'cock', 'dick', 'pussy', 'cum',
+  'anal', 'milf', 'dildo', 'horny', 'nude', 'naked', 'xxx', 'blowjob', 'handjob', 'orgasm',
+  'erotic', 'fetish', 'bdsm', 'hentai', 'onlyfans', 'cumming',
+  // Mental illness / self-harm / gambling addiction
+  'mentallyill', 'mentalill', 'suicide', 'suicidal', 'selfharm', 'self-harm', 'cutter',
+  'anorexi', 'bulimi', 'depressed', 'depression', 'gamblingaddict', 'gambleaddict',
+  'degenaddict', 'addicted', 'addiction', 'rehab',
+  // Profanity / slurs
+  'fuck', 'shit', 'cunt', 'bitch', 'bastard', 'asshole', 'dickhead', 'motherfuck', 'fag',
+  'faggot', 'dyke', 'tranny', 'retard', 'retarded', 'spastic', 'nigg', 'nigger', 'chink',
+  'spic', 'wetback', 'kike', 'gook', 'paki', 'coon', 'whore', 'slut', 'rape', 'rapist',
+  'molest', 'pedo', 'paedo', 'incest', 'bestiality',
+];
+
 // ---------- Polymarket research ----------
 
 async function fetchTrendingMarkets() {
@@ -347,6 +398,112 @@ function findOverlappingRecentPost(candidateWords, recentPosts, threshold = 2) {
   return null;
 }
 
+// ---------- Trader spotlight: eligibility, selection, fetch ----------
+
+// Criterion 1: a usable display name — not null, not a wallet address, not a
+// wallet+timestamp handle (e.g. "0x1a5c...-1774116788380").
+function isWalletLikeName(name) {
+  if (!name || typeof name !== 'string') return true;
+  const n = name.trim();
+  if (!n) return true;
+  if (n.toLowerCase().startsWith('0x')) return true;
+  // 40-hex address with optional -timestamp suffix, with or without 0x prefix
+  if (/^(0x)?[0-9a-f]{40}(-\d+)?$/i.test(n)) return true;
+  // A long run of hex characters anywhere (defensive)
+  if (/[0-9a-f]{30,}/i.test(n)) return true;
+  // No alphanumeric content at all
+  if (!/[a-z0-9]/i.test(n)) return true;
+  return false;
+}
+
+// Criterion 2: brand safety. Returns true only if the name is safe to feature
+// in a public blog title. Aggressive by design — when uncertain, reject.
+function isBrandSafeName(name) {
+  if (!name || typeof name !== 'string') return false;
+  const n = name.toLowerCase();
+  for (const bad of NAME_DENYLIST) {
+    if (n.includes(bad)) return false;
+  }
+  return true;
+}
+
+// Criterion 3: enough real data to write a credible, data-driven profile.
+function hasMeaningfulStats(t) {
+  return (
+    Number(t.pnl) > 0 &&
+    Number(t.winRate) > 0 &&
+    Number(t.marketsTraded) > 0 &&
+    Number(t.volume) > 0
+  );
+}
+
+// A trader is eligible only if ALL three criteria pass.
+function isEligibleTrader(t) {
+  if (!t) return false;
+  if (isWalletLikeName(t.displayName)) return false;
+  if (!isBrandSafeName(t.displayName)) return false;
+  if (!hasMeaningfulStats(t)) return false;
+  return true;
+}
+
+// Slugify a trader display name: lowercase, strip punctuation, hyphenate.
+function slugifyName(name) {
+  return String(name)
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+// Canonical spotlight slug for a trader.
+function spotlightSlug(name) {
+  return `${slugifyName(name)}-polymarket-trader-profile-strategy`;
+}
+
+// Has this trader already been spotlighted? Matches any existing slug that
+// begins with "<name>-polymarket-trader" so it also catches older patterns
+// (e.g. the existing "gravia-001-polymarket-trader-strategy-analysis").
+function traderAlreadySpotlighted(name, existingSlugs) {
+  const prefix = `${slugifyName(name)}-polymarket-trader`;
+  return existingSlugs.some(s => s.startsWith(prefix));
+}
+
+async function fetchLeaderboard() {
+  const res = await fetch(LEADERBOARD_URL, {
+    headers: { accept: 'application/json' },
+    signal: AbortSignal.timeout(20000),
+  });
+  if (!res.ok) throw new Error(`Leaderboard API ${res.status}`);
+  const data = await res.json();
+  const traders = Array.isArray(data.traders) ? data.traders : [];
+  return traders;
+}
+
+// Choose the spotlight trader: eligible + not-already-spotlighted. Among
+// eligible traders, prefer ones in SPOTLIGHT_CANDIDATES (proven search
+// demand) in list order, then fall back to leaderboard rank ascending.
+function selectSpotlightTrader(traders, existingSlugs) {
+  const eligible = traders.filter(isEligibleTrader);
+  const cand = SPOTLIGHT_CANDIDATES.map(c => c.toLowerCase());
+  const priority = (t) => {
+    const i = cand.indexOf(String(t.displayName).toLowerCase());
+    return i === -1 ? Infinity : i;
+  };
+  const ranked = [...eligible].sort((a, b) => {
+    const pa = priority(a);
+    const pb = priority(b);
+    if (pa !== pb) return pa - pb;
+    return (Number(a.rank) || 9999) - (Number(b.rank) || 9999);
+  });
+  for (const t of ranked) {
+    if (!traderAlreadySpotlighted(t.displayName, existingSlugs)) return t;
+  }
+  return null;
+}
+
 // ---------- Claude content generation ----------
 
 const SYSTEM_PROMPT = `You are the editorial AI for polymarket.tips, a site that tracks the top 50 Polymarket traders by verified PnL and surfaces "convergence signals" when multiple top traders independently take the same position on a market.
@@ -508,9 +665,9 @@ ${overusedWords.length ? overusedWords.join(', ') : '(none yet)'}
 Reusing two of these in your title/slug is the #1 source of duplicate rejections. Use AT MOST ONE of them. Reach for fresher framing instead.
 
 TODAY'S SPECIAL INSTRUCTIONS (in priority order):
-1. If "gravia_001 polymarket" has no post — write a trader spotlight about gravia_001 (same format as igetlitty-polymarket-success-story)
-2. If "polymarket withdrawal problems 2026" has no dedicated post — write a detailed guide covering KYC requirements, common withdrawal errors, processing times, and how to resolve issues
-3. If "polymarket app ios android" has no strong dedicated post — write a comprehensive mobile app guide
+1. If "polymarket withdrawal problems 2026" has no dedicated post — write a detailed guide covering KYC requirements, common withdrawal errors, processing times, and how to resolve issues
+2. If "polymarket app ios android" has no strong dedicated post — write a comprehensive mobile app guide
+(Trader spotlight posts are handled separately on the weekly spotlight day — do NOT write a trader-name profile here.)
 Do not duplicate any of the above if posts already exist for them.
 
 When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.${rejectionReason ? `\n\nIMPORTANT: Your previous attempt was REJECTED for duplicate overlap. Reason: ${rejectionReason}\nPick a different topic that does not overlap.` : ''}
@@ -533,20 +690,107 @@ Pick the best topic following the rules above and write the full blog post. Retu
     .map(b => b.text)
     .join('');
 
-  // Parse JSON — strip markdown fences if the model added them
+  return parseClaudeJSON(text);
+}
+
+// Extract and parse the single JSON object from a Claude response, tolerating
+// markdown fences and surrounding prose.
+function parseClaudeJSON(text) {
   let jsonText = text.trim();
   if (jsonText.startsWith('```')) {
     jsonText = jsonText.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim();
   }
-  // Find the outer JSON object
   const firstBrace = jsonText.indexOf('{');
   const lastBrace = jsonText.lastIndexOf('}');
   if (firstBrace === -1 || lastBrace === -1) {
     throw new Error('No JSON object in Claude response');
   }
-  jsonText = jsonText.slice(firstBrace, lastBrace + 1);
+  return JSON.parse(jsonText.slice(firstBrace, lastBrace + 1));
+}
 
-  const post = JSON.parse(jsonText);
+// Generate a trader spotlight post from REAL leaderboard stats. The subject
+// and all quantitative facts are fixed; Claude only writes the prose. We
+// force slug / title / category / hero-image config deterministically after
+// parsing so the model can't drift from the spec or invent a different topic.
+async function generateSpotlightPost({ trader, today }) {
+  const client = new Anthropic();
+  const name = trader.displayName;
+  const slug = spotlightSlug(name);
+  const title = `${name} on Polymarket: Trading Strategy, Win Rate & Track Record Analysis`;
+  const tags = Array.isArray(trader.archetypeTags) ? trader.archetypeTags : [];
+
+  // Pre-format the only numbers the model is allowed to state.
+  const fmtUSD = (n) => '$' + Math.round(Number(n)).toLocaleString('en-US');
+  const stats = {
+    rank: Number(trader.rank),
+    pnl: fmtUSD(trader.pnl),
+    winRate: `${Number(trader.winRate)}%`,
+    marketsTraded: Number(trader.marketsTraded).toLocaleString('en-US'),
+    volume: fmtUSD(trader.volume),
+    tags: tags.length ? tags.join(', ') : 'none',
+  };
+
+  const userMessage = `Write a TRADER SPOTLIGHT post about the Polymarket trader "${name}". The subject is FIXED — do not pick a different topic.
+
+VERIFIED ON-CHAIN STATS (from the polymarket.tips leaderboard). These are the ONLY quantitative facts you may state anywhere in the post. Do NOT invent or estimate any other number, dollar figure, percentage, date, market name, or specific trade:
+- Leaderboard rank: #${stats.rank} by total profit
+- Total profit (PnL): ${stats.pnl}
+- Win rate: ${stats.winRate}
+- Markets traded: ${stats.marketsTraded}
+- Total volume traded: ${stats.volume}
+- Archetype tags: ${stats.tags}
+
+Write ~900-1100 words, 6 H2 sections, full prose (no lists), following this arc:
+1. Who ${name} is — introduce them via their leaderboard standing (#${stats.rank}) and archetype tags
+2. Their verified track record — discuss the real PnL, win rate, markets traded, and volume above. Frame honestly: if the win rate is below 50%, do NOT call it "high" — instead explain how a sub-50% win rate can coexist with large PnL (outsized wins on high-conviction or early-mover positions outweighing frequent small losses)
+3. Their trading style — interpret the archetype tags (${stats.tags}) qualitatively. Do NOT fabricate specific trades, market names, or positions
+4. What other traders can learn from ${name}'s approach
+5. How to track ${name} and traders like them on polymarket.tips — this is where the required internal links go
+6. Sharp closing
+
+HONESTY RULES (critical — this publishes autonomously):
+- Use ONLY the six stats above. Never state any other figure.
+- Frame every stat as "verified on-chain data from the polymarket.tips leaderboard".
+- Never claim ${name} is profitable in any market or category you don't have data for.
+- Never invent specific positions, counterparties, dates, or per-trade amounts.
+
+Return the JSON object per the system prompt format with these EXACT values:
+- "slug": "${slug}"
+- "title": "${title}"
+- "category": "trader-intelligence"
+- "metaTitle": a 55-62 char SEO title containing "${name}" and "Polymarket"
+- "metaDescription": 150-160 chars, contains "${name} Polymarket", summarises the verified track record
+- "datePublished": "${today}"
+- "heroImage": { "titleLines": ["${name}", "Trader Profile"], "categoryLabel": "Trader Intelligence", "accent": "#f59e0b", "icon": "single relevant emoji" }
+- "heroImageAlt": describes the ${name} Polymarket trader profile
+- "content": the full markdown body. MUST include exactly two affiliate links to https://polymarket.com/?r=POLYTips, the internal link [convergence signal](/what-is-a-convergence-signal/), the internal link [top 50 Polymarket traders](/best-polymarket-traders-to-follow-2026/), and the two CTA boxes exactly as the system prompt specifies.
+
+Return ONLY the JSON object.`;
+
+  console.log(`Calling Claude for spotlight: ${name} (rank #${stats.rank})...`);
+  const response = await client.messages.create({
+    model: ANTHROPIC_MODEL,
+    max_tokens: 8000,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: userMessage }],
+  });
+  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  const post = parseClaudeJSON(text);
+
+  // Force the deterministic fields regardless of what the model returned.
+  post.slug = slug;
+  post.title = title;
+  post.category = 'trader-intelligence';
+  post.datePublished = today;
+  post.heroImage = {
+    titleLines: [name, 'Trader Profile'],
+    categoryLabel: 'Trader Intelligence',
+    accent: '#f59e0b',
+    icon: (post.heroImage && post.heroImage.icon) || '📊',
+  };
+  if (!post.heroImageAlt) {
+    post.heroImageAlt = `${name} Polymarket trader profile — verified track record and trading strategy`;
+  }
   return post;
 }
 
@@ -755,30 +999,65 @@ async function main() {
     }
   }
 
-  // Try up to 3 times. Each retry passes the accumulated rejection log so
-  // Claude can see exactly which titles and which shared words have already
-  // failed and pick fresher framing.
-  const MAX_ATTEMPTS = 3;
-  const rejections = [];
   let post = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const candidate = await generatePost({
-      markets,
-      existingSlugs,
-      today,
-      recentPosts,
-      rejectionReason: rejections.length ? rejections.join('\n') : null,
-    });
-    validateStructural(candidate);
+
+  // ---- Weekly trader spotlight (takes priority on the spotlight day) ----
+  const isSpotlightDay =
+    process.env.SPOTLIGHT_FORCE === '1' || new Date().getUTCDay() === SPOTLIGHT_DAY;
+  if (isSpotlightDay) {
+    console.log(`Spotlight day (or SPOTLIGHT_FORCE). Selecting an eligible trader...`);
     try {
-      validateNotDuplicate(candidate);
-      post = candidate;
-      break;
+      const traders = await fetchLeaderboard();
+      console.log(`Leaderboard returned ${traders.length} traders.`);
+      const eligibleCount = traders.filter(isEligibleTrader).length;
+      console.log(`${eligibleCount} pass eligibility filtering.`);
+      const trader = selectSpotlightTrader(traders, existingSlugs);
+      if (!trader) {
+        console.log('No eligible un-spotlighted trader found — falling back to keyword-gap selection.');
+      } else {
+        console.log(`Selected #${trader.rank} ${trader.displayName} for spotlight.`);
+        const candidate = await generateSpotlightPost({ trader, today });
+        validateStructural(candidate);
+        try {
+          validateNotDuplicate(candidate);
+          post = candidate;
+        } catch (err) {
+          if (!(err instanceof DuplicateTopicError)) throw err;
+          console.warn(`Spotlight rejected as duplicate: ${err.message}`);
+          console.warn('Falling back to keyword-gap selection.');
+        }
+      }
     } catch (err) {
-      if (!(err instanceof DuplicateTopicError)) throw err;
-      console.warn(`Attempt ${attempt}/${MAX_ATTEMPTS} rejected: ${err.message}`);
-      rejections.push(`Attempt ${attempt}: ${err.message}`);
-      if (attempt === MAX_ATTEMPTS) throw err;
+      console.warn(`Spotlight step failed (${err.message}) — falling back to keyword-gap selection.`);
+    }
+  }
+
+  // ---- Normal keyword-gap selection (runs unless a spotlight was produced) ----
+  if (!post) {
+    // Try up to 3 times. Each retry passes the accumulated rejection log so
+    // Claude can see exactly which titles and which shared words have already
+    // failed and pick fresher framing.
+    const MAX_ATTEMPTS = 3;
+    const rejections = [];
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      const candidate = await generatePost({
+        markets,
+        existingSlugs,
+        today,
+        recentPosts,
+        rejectionReason: rejections.length ? rejections.join('\n') : null,
+      });
+      validateStructural(candidate);
+      try {
+        validateNotDuplicate(candidate);
+        post = candidate;
+        break;
+      } catch (err) {
+        if (!(err instanceof DuplicateTopicError)) throw err;
+        console.warn(`Attempt ${attempt}/${MAX_ATTEMPTS} rejected: ${err.message}`);
+        rejections.push(`Attempt ${attempt}: ${err.message}`);
+        if (attempt === MAX_ATTEMPTS) throw err;
+      }
     }
   }
 
@@ -816,4 +1095,15 @@ export {
   findSlugLevelCollision,
   getAllPosts,
   parseFrontmatter,
+  // Trader spotlight
+  isWalletLikeName,
+  isBrandSafeName,
+  hasMeaningfulStats,
+  isEligibleTrader,
+  slugifyName,
+  spotlightSlug,
+  traderAlreadySpotlighted,
+  selectSpotlightTrader,
+  fetchLeaderboard,
+  LEADERBOARD_URL,
 };

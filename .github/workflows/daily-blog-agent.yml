@@ -12,6 +12,15 @@ on:
     # primary was skipped, the fallback catches up.
     - cron: '42 14 * * *'
   workflow_dispatch:
+    inputs:
+      force_spotlight:
+        description: 'Force a trader spotlight regardless of weekday'
+        type: boolean
+        default: false
+      force_run:
+        description: 'Bypass the same-day idempotency guard'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -51,4 +60,6 @@ jobs:
       - name: Run daily blog agent
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SPOTLIGHT_FORCE: ${{ github.event.inputs.force_spotlight == 'true' && '1' || '' }}
+          FORCE_RUN: ${{ github.event.inputs.force_run == 'true' && '1' || '' }}
         run: node scripts/daily-blog-agent.js
