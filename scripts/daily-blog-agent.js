@@ -24,9 +24,13 @@ const IMAGES_DIR = path.join(ROOT, 'public/images/blog');
 const ANTHROPIC_MODEL = 'claude-opus-4-5';
 
 // ---------- Keyword priorities (from Google Search Console) ----------
-// Real Search Console data — May 24, 2026 snapshot
+// Refreshed Jun 4, 2026: the entire original Tier 2/3 gap set has since been
+// covered by published posts (marked hasPost:true with their slugs below).
+// When no gap remains "available", the agent falls back to a fresh
+// trending-market analysis — see the resilient-fallback logic in generatePost.
 const KEYWORD_PRIORITIES = [
-  // TIER 1 — Existing posts, already ranking, consolidating via canonical fix
+  // COVERED — existing posts, already ranking / published. Kept so the agent
+  // knows these are taken and never proposes a near-duplicate.
   { keyword: 'polymarket whale tracker', position: 6.89, hasPost: true, slug: 'polymarket-whale-tracker' },
   { keyword: 'polymarket leaderboard', position: 7.32, hasPost: true, slug: 'polymarket-leaderboard-explained' },
   { keyword: 'polymarket top traders 2026', position: 6.47, hasPost: true, slug: 'top-polymarket-traders-2026' },
@@ -36,26 +40,32 @@ const KEYWORD_PRIORITIES = [
   { keyword: 'polymarket withdrawal guide', position: 12.52, hasPost: true, slug: 'polymarket-withdrawal-guide-how-to-cash-out-2026' },
   { keyword: 'polymarket copy trading', position: 13.33, hasPost: true, slug: 'polymarket-copy-trading-how-to-follow-top-traders' },
   { keyword: 'igetlitty polymarket', position: 6.62, hasPost: true, slug: 'igetlitty-polymarket-success-story' },
+  { keyword: 'polymarket app ios android', position: 47.36, hasPost: true, slug: 'polymarket-ios-android-app-complete-mobile-trading-guide' },
+  { keyword: 'polymarket ipo 2026', position: 18.0, hasPost: true, slug: 'polymarket-ipo-2026-prediction-market-public-offering' },
+  { keyword: 'polymarket signals', position: 63.0, hasPost: true, slug: 'polymarket-signals-how-to-identify-smart-money-convergence' },
+  { keyword: 'polymarket smart money tracking', position: 12.0, hasPost: true, slug: 'polymarket-smart-money-tracking-how-to-follow-whale-positions' },
+  { keyword: 'recession probability 2026', position: 19.0, hasPost: true, slug: 'polymarket-recession-2026-economic-outlook-markets' },
+  { keyword: 'polymarket house control 2026', position: 39.0, hasPost: true, slug: 'polymarket-2026-house-odds-midterm-predictions' },
+  { keyword: 'convergence trading strategy', position: 71.33, hasPost: true, slug: 'convergence-trading-strategy-polymarket-smart-money' },
+  { keyword: 'polymarket trading tips', position: 11.0, hasPost: true, slug: 'polymarket-tips-advanced-tactics-profitable-prediction-market-trading' },
+  { keyword: 'how to make money on polymarket', position: null, hasPost: true, slug: 'how-to-make-money-on-polymarket-profitable-approaches' },
+  { keyword: 'polymarket fees explained', position: null, hasPost: true, slug: 'polymarket-fees-explained-trading-costs-2026' },
+  { keyword: 'polymarket vs sports betting', position: null, hasPost: true, slug: 'polymarket-vs-sports-betting-differences-explained' },
+  { keyword: 'polymarket accuracy track record', position: null, hasPost: true, slug: 'polymarket-accuracy-how-accurate-are-prediction-markets' },
+  { keyword: 'prediction market strategy guide', position: null, hasPost: true, slug: 'prediction-market-strategy-smart-money-edge-2026' },
+  { keyword: 'polymarket beginner guide', position: null, hasPost: true, slug: 'polymarket-beginner-guide-how-to-start-trading-prediction-markets' },
 
-  // TIER 2 — Getting impressions, need dedicated or stronger posts — HIGH PRIORITY
-  { keyword: 'polymarket withdrawal problems 2026', position: 5.0, hasPost: false },
-  { keyword: 'gravia_001 polymarket', position: 9.29, hasPost: false },
-  { keyword: 'polymarket app ios android', position: 47.36, hasPost: false },
-  { keyword: 'polymarket ipo 2026', position: 18.0, hasPost: false },
-  { keyword: 'polymarket signals', position: 63.0, hasPost: false },
-  { keyword: 'polymarket smart money tracking', position: 12.0, hasPost: false },
-  { keyword: 'recession probability 2026', position: 19.0, hasPost: false },
-  { keyword: 'polymarket house control 2026', position: 39.0, hasPost: false },
-  { keyword: 'convergence trading strategy', position: 71.33, hasPost: false },
-  { keyword: 'polymarket trading tips', position: 11.0, hasPost: false },
-
-  // TIER 3 — High value evergreen gaps, no impressions yet
-  { keyword: 'how to make money on polymarket', position: null, hasPost: false },
-  { keyword: 'polymarket fees explained', position: null, hasPost: false },
-  { keyword: 'polymarket vs sports betting', position: null, hasPost: false },
-  { keyword: 'polymarket accuracy track record', position: null, hasPost: false },
-  { keyword: 'prediction market strategy guide', position: null, hasPost: false },
-  { keyword: 'polymarket beginner guide', position: null, hasPost: false },
+  // FRESH GAPS — genuinely uncovered long-tail topics (verified no existing
+  // slug uses these leading discriminators). Replace/extend from Search
+  // Console as new impression data arrives.
+  { keyword: 'polymarket tax reporting', position: null, hasPost: false },
+  { keyword: 'polymarket wallet security', position: null, hasPost: false },
+  { keyword: 'polymarket limit orders', position: null, hasPost: false },
+  { keyword: 'polymarket market resolution disputes', position: null, hasPost: false },
+  { keyword: 'polymarket liquidity provider rewards', position: null, hasPost: false },
+  { keyword: 'polymarket order book depth', position: null, hasPost: false },
+  { keyword: 'polymarket arbitrage opportunities', position: null, hasPost: false },
+  { keyword: 'polymarket negative risk explained', position: null, hasPost: false },
 ];
 
 // ---------- Trader spotlight ----------
@@ -585,7 +595,7 @@ Return ONLY a single JSON object — no markdown fences, no prose before or afte
 
 Return ONLY the JSON object. No preamble, no explanation, no markdown fences.`;
 
-async function generatePost({ markets, existingSlugs, today, recentPosts, rejectionReason }) {
+async function generatePost({ markets, existingSlugs, today, recentPosts, rejectionReason, forceTrending }) {
   const client = new Anthropic();
 
   // Annotate every keyword with whether a recent post already covers it
@@ -664,13 +674,11 @@ OVERUSED WORDS — appear in 3+ recent posts, very high collision risk:
 ${overusedWords.length ? overusedWords.join(', ') : '(none yet)'}
 Reusing two of these in your title/slug is the #1 source of duplicate rejections. Use AT MOST ONE of them. Reach for fresher framing instead.
 
-TODAY'S SPECIAL INSTRUCTIONS (in priority order):
-1. If "polymarket withdrawal problems 2026" has no dedicated post — write a detailed guide covering KYC requirements, common withdrawal errors, processing times, and how to resolve issues
-2. If "polymarket app ios android" has no strong dedicated post — write a comprehensive mobile app guide
+RESILIENT FALLBACK (important — read carefully):
+If the AVAILABLE KEYWORD GAPS list above is empty or you cannot find a gap you can cover without colliding with a recent post, DO NOT force a near-duplicate of an existing topic. Instead, write a fresh, timely analysis of ONE specific market from "Today's trending Polymarket markets" below. Pick a high-volume market whose specific subject is NOT already covered by an existing post, and give it a unique, descriptive slug built around that market's subject (e.g. polymarket-[event-or-entity]-[angle]). Trending markets change daily, so this is always a source of genuinely novel, non-duplicate content. This is strongly preferred over straining to invent yet another angle on a saturated evergreen topic.
 (Trader spotlight posts are handled separately on the weekly spotlight day — do NOT write a trader-name profile here.)
-Do not duplicate any of the above if posts already exist for them.
 
-When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.${rejectionReason ? `\n\nIMPORTANT: Your previous attempt was REJECTED for duplicate overlap. Reason: ${rejectionReason}\nPick a different topic that does not overlap.` : ''}
+When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.${rejectionReason ? `\n\nIMPORTANT: Your previous attempt was REJECTED for duplicate overlap. Reason: ${rejectionReason}\nPick a different topic that does not overlap.` : ''}${forceTrending ? `\n\nFINAL ATTEMPT — MANDATORY: Do NOT propose any evergreen or keyword-list topic. You MUST write a fresh, timely analysis of ONE specific market from "Today's trending Polymarket markets" below. Choose the highest-volume market whose specific subject is not already covered by an existing slug, and build a unique slug around that market's specific subject/entity. This guarantees a non-duplicate post.` : ''}
 
 Today's trending Polymarket markets (sorted by 24h volume, for reference / optional trending hook):
 ${JSON.stringify(markets, null, 2)}
@@ -1054,15 +1062,20 @@ async function main() {
     // Try up to 3 times. Each retry passes the accumulated rejection log so
     // Claude can see exactly which titles and which shared words have already
     // failed and pick fresher framing.
-    const MAX_ATTEMPTS = 3;
+    const MAX_ATTEMPTS = 4;
     const rejections = [];
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      // On the final attempt, force a fresh trending-market analysis — an
+      // always-novel escape hatch so the agent can never exhaust its topics
+      // and fail to publish (as happened Jun 3 when the keyword list saturated).
+      const forceTrending = attempt === MAX_ATTEMPTS;
       const candidate = await generatePost({
         markets,
         existingSlugs,
         today,
         recentPosts,
         rejectionReason: rejections.length ? rejections.join('\n') : null,
+        forceTrending,
       });
       validateStructural(candidate);
       try {
