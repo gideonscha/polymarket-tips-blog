@@ -23,49 +23,57 @@ const IMAGES_DIR = path.join(ROOT, 'public/images/blog');
 
 const ANTHROPIC_MODEL = 'claude-opus-4-5';
 
-// ---------- Keyword priorities (from Google Search Console) ----------
-// Refreshed Jun 4, 2026: the entire original Tier 2/3 gap set has since been
-// covered by published posts (marked hasPost:true with their slugs below).
-// When no gap remains "available", the agent falls back to a fresh
-// trending-market analysis — see the resilient-fallback logic in generatePost.
+// ---------- Keyword priorities ----------
+// Refreshed Jun 8, 2026 from 28-day Search Console analysis. The strategy
+// shift: STOP manufacturing vanity impressions (transient "trending markets
+// june 2026" listings, price-target speculation, numeric post-IDs — all high
+// impressions / zero clicks / lost to AI Overviews). PRIORITISE query types
+// AI Overviews CANNOT satisfy:
+//   Tier 1 — trader-name spotlights (live/proprietary data; handled by the
+//            weekly spotlight path, biased into the daily picker).
+//   Tier 2 — proprietary / live-data evergreen (convergence, whale tracker,
+//            smart money, copy trading, leaderboard, signals, best traders).
+//            These route the high-intent reader into the live product.
+//   Tier 3 — evergreen how-it-works / comparison (some AI-Overview exposure,
+//            so lower priority — only when Tier 1/2 exhausted).
+// `tier` drives selection priority; `hasPost` marks what's already covered so
+// the agent never proposes a near-duplicate.
 const KEYWORD_PRIORITIES = [
-  // COVERED — existing posts, already ranking / published. Kept so the agent
-  // knows these are taken and never proposes a near-duplicate.
-  { keyword: 'polymarket whale tracker', position: 6.89, hasPost: true, slug: 'polymarket-whale-tracker' },
-  { keyword: 'polymarket leaderboard', position: 7.32, hasPost: true, slug: 'polymarket-leaderboard-explained' },
-  { keyword: 'polymarket top traders 2026', position: 6.47, hasPost: true, slug: 'top-polymarket-traders-2026' },
-  { keyword: 'polymarket archetype tags', position: 7.47, hasPost: true, slug: 'polymarket-archetype-tags-explained' },
-  { keyword: 'best polymarket traders', position: 16.21, hasPost: true, slug: 'best-polymarket-traders-to-follow-2026' },
-  { keyword: 'polymarket 2026 midterms', position: 15.27, hasPost: true, slug: 'polymarket-2026-midterm-elections-prediction-markets' },
-  { keyword: 'polymarket withdrawal guide', position: 12.52, hasPost: true, slug: 'polymarket-withdrawal-guide-how-to-cash-out-2026' },
-  { keyword: 'polymarket copy trading', position: 13.33, hasPost: true, slug: 'polymarket-copy-trading-how-to-follow-top-traders' },
-  { keyword: 'igetlitty polymarket', position: 6.62, hasPost: true, slug: 'igetlitty-polymarket-success-story' },
-  { keyword: 'polymarket app ios android', position: 47.36, hasPost: true, slug: 'polymarket-ios-android-app-complete-mobile-trading-guide' },
-  { keyword: 'polymarket ipo 2026', position: 18.0, hasPost: true, slug: 'polymarket-ipo-2026-prediction-market-public-offering' },
-  { keyword: 'polymarket signals', position: 63.0, hasPost: true, slug: 'polymarket-signals-how-to-identify-smart-money-convergence' },
-  { keyword: 'polymarket smart money tracking', position: 12.0, hasPost: true, slug: 'polymarket-smart-money-tracking-how-to-follow-whale-positions' },
-  { keyword: 'recession probability 2026', position: 19.0, hasPost: true, slug: 'polymarket-recession-2026-economic-outlook-markets' },
-  { keyword: 'polymarket house control 2026', position: 39.0, hasPost: true, slug: 'polymarket-2026-house-odds-midterm-predictions' },
-  { keyword: 'convergence trading strategy', position: 71.33, hasPost: true, slug: 'convergence-trading-strategy-polymarket-smart-money' },
-  { keyword: 'polymarket trading tips', position: 11.0, hasPost: true, slug: 'polymarket-tips-advanced-tactics-profitable-prediction-market-trading' },
-  { keyword: 'how to make money on polymarket', position: null, hasPost: true, slug: 'how-to-make-money-on-polymarket-profitable-approaches' },
-  { keyword: 'polymarket fees explained', position: null, hasPost: true, slug: 'polymarket-fees-explained-trading-costs-2026' },
-  { keyword: 'polymarket vs sports betting', position: null, hasPost: true, slug: 'polymarket-vs-sports-betting-differences-explained' },
-  { keyword: 'polymarket accuracy track record', position: null, hasPost: true, slug: 'polymarket-accuracy-how-accurate-are-prediction-markets' },
-  { keyword: 'prediction market strategy guide', position: null, hasPost: true, slug: 'prediction-market-strategy-smart-money-edge-2026' },
-  { keyword: 'polymarket beginner guide', position: null, hasPost: true, slug: 'polymarket-beginner-guide-how-to-start-trading-prediction-markets' },
+  // TIER 2 — proprietary / live-data evergreen (AI-Overview-resistant).
+  { keyword: 'polymarket whale tracker', tier: 2, position: 6.89, hasPost: true, slug: 'polymarket-whale-tracker' },
+  { keyword: 'polymarket leaderboard', tier: 2, position: 7.32, hasPost: true, slug: 'polymarket-leaderboard-explained' },
+  { keyword: 'polymarket top traders 2026', tier: 2, position: 6.47, hasPost: true, slug: 'top-polymarket-traders-2026' },
+  { keyword: 'best polymarket traders', tier: 2, position: 16.21, hasPost: true, slug: 'best-polymarket-traders-to-follow-2026' },
+  { keyword: 'polymarket archetype tags', tier: 2, position: 7.47, hasPost: true, slug: 'polymarket-archetype-tags-explained' },
+  { keyword: 'polymarket copy trading', tier: 2, position: 13.33, hasPost: true, slug: 'polymarket-copy-trading-how-to-follow-top-traders' },
+  { keyword: 'polymarket smart money tracking', tier: 2, position: 12.0, hasPost: true, slug: 'polymarket-smart-money-tracking-how-to-follow-whale-positions' },
+  { keyword: 'polymarket signals', tier: 2, position: 63.0, hasPost: true, slug: 'polymarket-signals-how-to-identify-smart-money-convergence' },
+  { keyword: 'convergence trading strategy', tier: 2, position: 71.33, hasPost: true, slug: 'convergence-trading-strategy-polymarket-smart-money' },
+  { keyword: 'polymarket trading tips', tier: 2, position: 11.0, hasPost: true, slug: 'polymarket-tips-advanced-tactics-profitable-prediction-market-trading' },
+  // Tier 2 fresh gaps (proprietary/live-data angle, not yet covered):
+  { keyword: 'polymarket trader win rate analysis', tier: 2, position: null, hasPost: false },
+  { keyword: 'polymarket position size signals', tier: 2, position: null, hasPost: false },
 
-  // FRESH GAPS — genuinely uncovered long-tail topics (verified no existing
-  // slug uses these leading discriminators). Replace/extend from Search
-  // Console as new impression data arrives.
-  { keyword: 'polymarket tax reporting', position: null, hasPost: false },
-  { keyword: 'polymarket wallet security', position: null, hasPost: false },
-  { keyword: 'polymarket limit orders', position: null, hasPost: false },
-  { keyword: 'polymarket market resolution disputes', position: null, hasPost: false },
-  { keyword: 'polymarket liquidity provider rewards', position: null, hasPost: false },
-  { keyword: 'polymarket order book depth', position: null, hasPost: false },
-  { keyword: 'polymarket arbitrage opportunities', position: null, hasPost: false },
-  { keyword: 'polymarket negative risk explained', position: null, hasPost: false },
+  // TIER 3 — evergreen how-it-works / comparison (AI-Overview-exposed → lower priority).
+  { keyword: 'polymarket 2026 midterms', tier: 3, position: 15.27, hasPost: true, slug: 'polymarket-2026-midterm-elections-prediction-markets' },
+  { keyword: 'polymarket withdrawal guide', tier: 3, position: 12.52, hasPost: true, slug: 'polymarket-withdrawal-guide-how-to-cash-out-2026' },
+  { keyword: 'polymarket app ios android', tier: 3, position: 47.36, hasPost: true, slug: 'polymarket-ios-android-app-complete-mobile-trading-guide' },
+  { keyword: 'polymarket ipo 2026', tier: 3, position: 18.0, hasPost: true, slug: 'polymarket-ipo-2026-prediction-market-public-offering' },
+  { keyword: 'recession probability 2026', tier: 3, position: 19.0, hasPost: true, slug: 'polymarket-recession-2026-economic-outlook-markets' },
+  { keyword: 'polymarket house control 2026', tier: 3, position: 39.0, hasPost: true, slug: 'polymarket-2026-house-odds-midterm-predictions' },
+  { keyword: 'how to make money on polymarket', tier: 3, position: null, hasPost: true, slug: 'how-to-make-money-on-polymarket-profitable-approaches' },
+  { keyword: 'polymarket fees explained', tier: 3, position: null, hasPost: true, slug: 'polymarket-fees-explained-trading-costs-2026' },
+  { keyword: 'polymarket vs sports betting', tier: 3, position: null, hasPost: true, slug: 'polymarket-vs-sports-betting-differences-explained' },
+  { keyword: 'polymarket accuracy track record', tier: 3, position: null, hasPost: true, slug: 'polymarket-accuracy-how-accurate-are-prediction-markets' },
+  { keyword: 'prediction market strategy guide', tier: 3, position: null, hasPost: true, slug: 'prediction-market-strategy-smart-money-edge-2026' },
+  { keyword: 'polymarket beginner guide', tier: 3, position: null, hasPost: true, slug: 'polymarket-beginner-guide-how-to-start-trading-prediction-markets' },
+  { keyword: 'polymarket limit orders', tier: 3, position: null, hasPost: true, slug: 'polymarket-limit-orders-how-to-use-advanced-order-types' },
+  // Tier 3 fresh gaps (evergreen how-to / comparison, not yet covered):
+  { keyword: 'polymarket tax reporting', tier: 3, position: null, hasPost: false },
+  { keyword: 'polymarket wallet security', tier: 3, position: null, hasPost: false },
+  { keyword: 'polymarket market resolution disputes', tier: 3, position: null, hasPost: false },
+  { keyword: 'polymarket negative risk explained', tier: 3, position: null, hasPost: false },
+  { keyword: 'how to use polymarket in india', tier: 3, position: null, hasPost: false },
 ];
 
 // ---------- Trader spotlight ----------
@@ -398,6 +406,7 @@ function getAllPosts(recentDays = 30) {
 }
 
 class DuplicateTopicError extends Error {}
+class TopicRejectedError extends Error {}
 
 // Returns the first recent post whose topic words overlap with `candidateWords`
 // at >= `threshold` tokens, or null if none.
@@ -406,6 +415,69 @@ function findOverlappingRecentPost(candidateWords, recentPosts, threshold = 2) {
     if (overlapCount(candidateWords, rp.topicWords) >= threshold) return rp;
   }
   return null;
+}
+
+// ---------- Topic intent gate ----------
+//
+// Search Console analysis (Jun 2026) showed ~12x impression growth but ~0
+// clicks, almost entirely from three junk query classes the agent had been
+// manufacturing: time-bound market LISTINGS ("trending markets june 2026"),
+// price-target SPECULATION ("bitcoin $150k june 2026"), and numeric post-ID /
+// navigational queries. All three are either lost to AI Overviews or want to
+// land on Polymarket itself, not a blog post.
+//
+// classifyTopicIntent is a pure, unit-testable gate run on every proposed
+// topic. It returns { allowed, reason, tier }. Blocked topics trigger a retry.
+
+const MONTH_RE = /\b(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(tember)?|oct(ober)?|nov(ember)?|dec(ember)?)\b/;
+const YEAR_RE = /\b20\d{2}\b/;
+
+function classifyTopicIntent({ title = '', slug = '' } = {}) {
+  const text = `${title} ${slug.replace(/-/g, ' ')}`.toLowerCase();
+  const hasMonthOrYear = MONTH_RE.test(text) || YEAR_RE.test(text);
+
+  // BLOCK 1 — time-bound market listings. An adjective like trending/active/
+  // recent/latest/current/popular/upcoming/top within ~3 words of "market(s)"
+  // AND a month or year. Note: the noun must be "market(s)", NOT "traders" —
+  // "top polymarket traders 2026" is a GOOD Tier-2 target and must pass.
+  const listingRe = /\b(trending|active|recent|latest|current|popular|upcoming|top)\b(\s+\w+){0,3}\s+markets?\b/;
+  if (listingRe.test(text) && hasMonthOrYear) {
+    return { allowed: false, reason: 'time-bound market listing (transient; wants live Polymarket, not a blog post)', tier: null };
+  }
+
+  // BLOCK 2 — price-target speculation tied to a date. "$<number>", "price
+  // target", or "price prediction" combined with a month/year.
+  const hasPriceTarget = /\$\s?\d/.test(text) || /\bprice (target|prediction)\b/.test(text);
+  if (hasPriceTarget && hasMonthOrYear) {
+    return { allowed: false, reason: 'dated price-target speculation (e.g. "$150k june 2026"; AI-Overview territory)', tier: null };
+  }
+
+  // BLOCK 3 — numeric post-ID / navigational intent.
+  const slugTokensOnly = slug.split('-').filter(Boolean);
+  const digitTokens = slugTokensOnly.filter(t => /^\d+$/.test(t)).length;
+  const mostlyNumericSlug = slugTokensOnly.length > 0 && digitTokens / slugTokensOnly.length >= 0.5;
+  if (mostlyNumericSlug || /\bpost\s+\d{5,}\b/.test(text) || /\b\d{8,}\b/.test(text)) {
+    return { allowed: false, reason: 'numeric post-ID / navigational topic (structurally unclickable)', tier: null };
+  }
+  if (/\b(live (odds|markets)|markets? (right now|today)|odds right now)\b/.test(text)) {
+    return { allowed: false, reason: 'navigational "see live markets/odds now" intent (belongs on Polymarket, not the blog)', tier: null };
+  }
+
+  // INTENT TEST — prefer proprietary/live-data (Tier 2) and durable evergreen.
+  const tier2Re = /\b(convergence|whale|smart money|copy trad|copytrad|leaderboard|signal|top trader|traders to follow|trader (win rate|pnl|profile|positions?|strategy)|position sizing|position size)\b/;
+  if (tier2Re.test(text)) {
+    return { allowed: true, reason: 'proprietary / live-data angle (AI-Overview-resistant)', tier: 2 };
+  }
+  // Specific named-entity / event analysis (a real market subject, framed as
+  // durable analysis) — allowed. This is the legitimate trending-as-example
+  // fallback: e.g. "what smart money is pricing on the <event> market".
+  // Generic evergreen how-to / comparison — allowed but Tier 3 (last resort).
+  const tier3Re = /\b(vs |versus|fees|accuracy|withdrawal|deposit|mobile|app|how to|guide|explained|beginner|tax|wallet|limit order|resolution|liquidity|order book|arbitrage|negative risk)\b/;
+  if (tier3Re.test(text)) {
+    return { allowed: true, reason: 'evergreen how-it-works / comparison', tier: 3 };
+  }
+  // Default: allowed (durable analysis of a specific subject), Tier 3 priority.
+  return { allowed: true, reason: 'specific-subject analysis', tier: 3 };
 }
 
 // ---------- Trader spotlight: eligibility, selection, fetch ----------
@@ -585,6 +657,17 @@ Return ONLY a single JSON object — no markdown fences, no prose before or afte
 - The target keyword (derive from the topic, e.g. "Polymarket [topic]") should appear naturally in the H1/meta and 3 times in the body
 - Never mention "this post" or "today's article" self-referentially
 
+## Click-earning metadata (CRITICAL — most posts rank but earn zero clicks)
+
+The blog's job is to RANK and hand the high-intent reader to the live product. Generic informational answers lose the click to Google's AI Overviews, so titles and snippets must open an INFORMATION GAP — name the subject and promise an insight, but never reveal the conclusion or the headline number in the title or meta description.
+
+- TITLE: name the subject + promise an insight. Do NOT put the answer or the key number in the title.
+    Bad:  "gravia_001 Is Up $2.1M Betting Against the Fed"
+    Good: "gravia_001's Polymarket Strategy: How a Top-10 Trader Is Positioned Now"
+- META DESCRIPTION (HARD MAX 155 chars): tease the signal/direction without giving it away; end with a reason to click through to live data. NEVER put the full answer or the headline stat in the snippet.
+- LIVE-APP CTA: every post must include, in the body, a prominent link to the relevant LIVE view on the main app — for live-data/trader topics link to the matching live page (a trader profile at https://polymarket.tips/trader/<address> when an address is available, otherwise the relevant feed at https://polymarket.tips), framed as "see the live data / positions / signals". This is in addition to the two CTA boxes and the affiliate links.
+- Only ever use real, verifiable stats. Never fabricate a number to fill the gap.
+
 ## Topic selection rules
 
 - Prefer high-volume markets with a timely hook
@@ -650,11 +733,16 @@ ${coveredGaps.length
 TERMS WITH EXISTING POSTS (older — these may eventually get supporting content, but only with a genuinely fresh angle that does NOT overlap with any recent post on 2+ topic words):
 ${keywordExisting.map(k => `- "${k.keyword}" — existing post at /${k.slug}/ — ranking ~${k.position}`).join('\n')}
 
-TOPIC SELECTION PRIORITY ORDER:
-1. FIRST PRIORITY: An AVAILABLE keyword gap relevant to current Polymarket trends
-2. SECOND PRIORITY: Any other AVAILABLE keyword gap (write a Tier 3 evergreen guide)
-3. THIRD PRIORITY: Supporting content for a Tier 1 post — only if your angle's topic words overlap with every recent post by AT MOST ONE
-4. LAST RESORT ONLY: Pure trending/timely post — only if it is genuinely major breaking news AND its topic words do not overlap with any recent post by 2+
+TOPIC SELECTION PRIORITY ORDER (weight keyword gaps FAR above the trending feed):
+1. FIRST PRIORITY: An AVAILABLE Tier 2 keyword gap (proprietary / live-data angle — convergence, whale tracking, smart money, copy trading, leaderboard, signals, trader win-rate/positioning). These are AI-Overview-resistant and route the reader into the live product.
+2. SECOND PRIORITY: An AVAILABLE Tier 3 keyword gap (evergreen how-it-works / comparison).
+3. LAST RESORT: a fresh evergreen/trader ANGLE that uses a specific current market as a live EXAMPLE (see RESILIENT FALLBACK). The trending feed is INSPIRATION for framing, never the topic itself.
+
+DO NOT WRITE (these get impressions but zero clicks and will be auto-rejected):
+- Time-bound market listings: "Polymarket trending/active/recent/top markets [month] [year]". Searchers for these want Polymarket itself, not a blog post.
+- Dated price-target speculation: "Bitcoin $150k [month] [year]", "[asset] price prediction [year]". Lost to AI Overviews.
+- Anything built around a numeric market ID or "see live markets/odds right now" intent.
+A hard gate enforces this after you respond; a blocked topic wastes an attempt. Do not propose them.
 
 DUPLICATE-AVOIDANCE RULES (HARD CONSTRAINTS — both enforced post-generation):
 
@@ -675,10 +763,13 @@ ${overusedWords.length ? overusedWords.join(', ') : '(none yet)'}
 Reusing two of these in your title/slug is the #1 source of duplicate rejections. Use AT MOST ONE of them. Reach for fresher framing instead.
 
 RESILIENT FALLBACK (important — read carefully):
-If the AVAILABLE KEYWORD GAPS list above is empty or you cannot find a gap you can cover without colliding with a recent post, DO NOT force a near-duplicate of an existing topic. Instead, write a fresh, timely analysis of ONE specific market from "Today's trending Polymarket markets" below. Pick a high-volume market whose specific subject is NOT already covered by an existing post, and give it a unique, descriptive slug built around that market's subject (e.g. polymarket-[event-or-entity]-[angle]). Trending markets change daily, so this is always a source of genuinely novel, non-duplicate content. This is strongly preferred over straining to invent yet another angle on a saturated evergreen topic.
+If no AVAILABLE keyword gap can be covered without colliding with a recent post, DO NOT force a near-duplicate, and DO NOT write a transient "trending markets" listing. Instead, take ONE specific high-volume market from "Today's trending Polymarket markets" below and use it as a LIVE EXAMPLE inside a durable, evergreen angle — preferably a smart-money / convergence / trader-positioning angle. The post is about the durable concept, illustrated by the current market; it is NOT a time-stamped listing of what's trending.
+    Bad (transient, blocked):  "Polymarket Trending Markets June 2026"
+    Good (durable + live example): "How Smart Money Positions Around a Fed Decision — and What the Live <market> Market Shows"
+Give it a unique slug built around the durable angle + the specific subject (e.g. polymarket-[entity]-[smart-money|convergence|positioning]-angle), NOT around a month/year. This must pass the intent gate (no listing/price-target/navigational patterns).
 (Trader spotlight posts are handled separately on the weekly spotlight day — do NOT write a trader-name profile here.)
 
-When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.${rejectionReason ? `\n\nIMPORTANT: Your previous attempt was REJECTED for duplicate overlap. Reason: ${rejectionReason}\nPick a different topic that does not overlap.` : ''}${forceTrending ? `\n\nFINAL ATTEMPT — MANDATORY: Do NOT propose any evergreen or keyword-list topic. You MUST write a fresh, timely analysis of ONE specific market from "Today's trending Polymarket markets" below. Choose the highest-volume market whose specific subject is not already covered by an existing slug, and build a unique slug around that market's specific subject/entity. This guarantees a non-duplicate post.` : ''}
+When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.${rejectionReason ? `\n\nIMPORTANT: Your previous attempt was REJECTED for duplicate overlap. Reason: ${rejectionReason}\nPick a different topic that does not overlap.` : ''}${forceTrending ? `\n\nFINAL ATTEMPT — MANDATORY: Take the highest-volume market from "Today's trending Polymarket markets" whose subject is not already covered, and write a DURABLE evergreen/smart-money angle that uses it as a LIVE EXAMPLE (per RESILIENT FALLBACK). Build a unique slug around the durable angle + subject/entity — NOT a "trending markets [month/year]" listing, NOT a price target, NOT a numeric ID. It must pass the intent gate. This guarantees a non-duplicate, clickable post.` : ''}
 
 Today's trending Polymarket markets (sorted by 24h volume, for reference / optional trending hook):
 ${JSON.stringify(markets, null, 2)}
@@ -737,6 +828,11 @@ async function generateSpotlightPost({ trader, today }) {
     volume: fmtUSD(trader.volume),
     tags: tags.length ? tags.join(', ') : 'none',
   };
+  // Live app page for this trader — routes the high-intent reader to real-time
+  // positions. Use the verified on-chain wallet address from the leaderboard.
+  const liveProfileUrl = trader.walletAddress
+    ? `https://polymarket.tips/trader/${trader.walletAddress}`
+    : 'https://polymarket.tips';
 
   const userMessage = `Write a TRADER SPOTLIGHT post about the Polymarket trader "${name}". The subject is FIXED — do not pick a different topic.
 
@@ -762,16 +858,21 @@ HONESTY RULES (critical — this publishes autonomously):
 - Never claim ${name} is profitable in any market or category you don't have data for.
 - Never invent specific positions, counterparties, dates, or per-trade amounts.
 
+CLICK-EARNING METADATA (the post must rank AND route the reader to live data):
+- TITLE must open an information gap — name ${name} and promise an insight, but do NOT put any PnL/win-rate number in the title.
+- META DESCRIPTION (HARD MAX 155 chars) must tease ${name}'s approach and end with a reason to see the live positions — do NOT put the headline number in it.
+- In Section 5, include a prominent live-data CTA linking to ${name}'s live profile: [See ${name}'s live positions on polymarket.tips](${liveProfileUrl}) — this routes the high-intent reader to real-time data.
+
 Return the JSON object per the system prompt format with these EXACT values:
 - "slug": "${slug}"
 - "title": "${title}"
 - "category": "trader-intelligence"
-- "metaTitle": a 55-62 char SEO title containing "${name}" and "Polymarket"
-- "metaDescription": 150-160 chars, contains "${name} Polymarket", summarises the verified track record
+- "metaTitle": a 55-62 char SEO title containing "${name}" and "Polymarket" that opens an information gap — do NOT include any PnL/win-rate number
+- "metaDescription": MAX 155 chars, contains "${name} Polymarket", teases the approach and ends with a reason to see live positions — do NOT include the headline number
 - "datePublished": "${today}"
 - "heroImage": { "titleLines": ["${name}", "Trader Profile"], "categoryLabel": "Trader Intelligence", "accent": "#f59e0b", "icon": "single relevant emoji" }
 - "heroImageAlt": describes the ${name} Polymarket trader profile
-- "content": the full markdown body. MUST include exactly two affiliate links to https://polymarket.com/?r=POLYTips, the internal link [convergence signal](/what-is-a-convergence-signal/), the internal link [top 50 Polymarket traders](/best-polymarket-traders-to-follow-2026/), and the two CTA boxes exactly as the system prompt specifies.
+- "content": the full markdown body. MUST include exactly two affiliate links to https://polymarket.com/?r=POLYTips, the internal link [convergence signal](/what-is-a-convergence-signal/), the internal link [top 50 Polymarket traders](/best-polymarket-traders-to-follow-2026/), the live-profile CTA [See ${name}'s live positions on polymarket.tips](${liveProfileUrl}), and the two CTA boxes exactly as the system prompt specifies.
 
 Return ONLY the JSON object.`;
 
@@ -1079,11 +1180,17 @@ async function main() {
       });
       validateStructural(candidate);
       try {
+        // Intent gate FIRST — reject transient/price/navigational topics
+        // before the duplicate checks (cheaper signal, clearer rejection).
+        const intent = classifyTopicIntent({ title: candidate.title, slug: candidate.slug });
+        if (!intent.allowed) {
+          throw new TopicRejectedError(`intent gate: ${intent.reason}`);
+        }
         validateNotDuplicate(candidate);
         post = candidate;
         break;
       } catch (err) {
-        if (!(err instanceof DuplicateTopicError)) throw err;
+        if (!(err instanceof DuplicateTopicError) && !(err instanceof TopicRejectedError)) throw err;
         console.warn(`Attempt ${attempt}/${MAX_ATTEMPTS} rejected: ${err.message}`);
         rejections.push(`Attempt ${attempt}: ${err.message}`);
         if (attempt === MAX_ATTEMPTS) throw err;
@@ -1123,6 +1230,7 @@ export {
   slugTokenList,
   slugPrefix,
   findSlugLevelCollision,
+  classifyTopicIntent,
   getAllPosts,
   parseFrontmatter,
   // Trader spotlight
