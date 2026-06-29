@@ -498,6 +498,13 @@ function isWalletLikeName(name) {
   if (/[0-9a-f]{30,}/i.test(n)) return true;
   // No alphanumeric content at all
   if (!/[a-z0-9]/i.test(n)) return true;
+  // Purely numeric or numeric-ID-like handles (e.g. "123987456", "248188374").
+  // These read as post-IDs, are structurally unclickable, and are exactly the
+  // numeric junk we refuse to publish. A real display name has letters; require
+  // at least 3 letters, and reject any long digit run.
+  const letters = (n.match(/[a-z]/gi) || []).length;
+  if (letters < 3) return true;
+  if (/\d{6,}/.test(n)) return true;
   return false;
 }
 
@@ -1148,11 +1155,19 @@ async function main() {
         const candidate = await generateSpotlightPost({ trader, today });
         validateStructural(candidate);
         try {
+          // Backstop: even a "brand-safe" trader can have a junk handle that
+          // slips the eligibility filter (e.g. a numeric-ID name). Run the
+          // same intent gate used for normal posts — it blocks numeric-ID /
+          // navigational titles — so junk names never publish.
+          const intent = classifyTopicIntent({ title: candidate.title, slug: candidate.slug });
+          if (!intent.allowed) {
+            throw new TopicRejectedError(`spotlight intent gate: ${intent.reason}`);
+          }
           validateSpotlightNotDuplicate(candidate);
           post = candidate;
         } catch (err) {
-          if (!(err instanceof DuplicateTopicError)) throw err;
-          console.warn(`Spotlight rejected as duplicate: ${err.message}`);
+          if (!(err instanceof DuplicateTopicError) && !(err instanceof TopicRejectedError)) throw err;
+          console.warn(`Spotlight rejected: ${err.message}`);
           console.warn('Falling back to keyword-gap selection.');
         }
       }

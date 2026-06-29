@@ -32,6 +32,11 @@ assert(isWalletLikeName('0x3DFb153c197D4C19D3B31c1ecD2c7B6860eeabAf-172295790818
 assert(isWalletLikeName('0xa0f21e6d351baa9185716b5c00c2925ed9621848'), '40-hex address rejected');
 assert(!isWalletLikeName('mooseborzoi'), 'normal name not wallet-like');
 assert(!isWalletLikeName('LaBradfordSmith22'), 'alphanumeric name not wallet-like');
+// Purely-numeric / numeric-ID handles must be rejected (structurally unclickable).
+assert(isWalletLikeName('123987456'), 'all-numeric handle rejected');
+assert(isWalletLikeName('248188374'), 'numeric-ID handle rejected');
+assert(isWalletLikeName('a1234567'), 'short-letters + long digit run rejected');
+assert(!isWalletLikeName('trader88'), 'normal name with a couple digits is fine');
 
 // ---- Criterion 2: brand safety (the names the user flagged) ----
 assert(!isBrandSafeName('JewishNinja'), 'JewishNinja rejected (religion/ethnicity)');
