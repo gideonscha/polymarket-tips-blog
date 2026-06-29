@@ -52,7 +52,8 @@ const KEYWORD_PRIORITIES = [
   { keyword: 'polymarket trading tips', tier: 2, position: 11.0, hasPost: true, slug: 'polymarket-tips-advanced-tactics-profitable-prediction-market-trading' },
   // Tier 2 fresh gaps (proprietary/live-data angle, not yet covered):
   { keyword: 'polymarket trader win rate analysis', tier: 2, position: null, hasPost: false },
-  { keyword: 'polymarket position size signals', tier: 2, position: null, hasPost: false },
+  { keyword: 'polymarket automated trading bots', tier: 2, position: null, hasPost: false },
+  { keyword: 'polymarket contrarian trader edge', tier: 2, position: null, hasPost: false },
 
   // TIER 3 — evergreen how-it-works / comparison (AI-Overview-exposed → lower priority).
   { keyword: 'polymarket 2026 midterms', tier: 3, position: 15.27, hasPost: true, slug: 'polymarket-2026-midterm-elections-prediction-markets' },
@@ -70,10 +71,12 @@ const KEYWORD_PRIORITIES = [
   { keyword: 'polymarket limit orders', tier: 3, position: null, hasPost: true, slug: 'polymarket-limit-orders-how-to-use-advanced-order-types' },
   // Tier 3 fresh gaps (evergreen how-to / comparison, not yet covered):
   { keyword: 'polymarket tax reporting', tier: 3, position: null, hasPost: false },
-  { keyword: 'polymarket wallet security', tier: 3, position: null, hasPost: false },
-  { keyword: 'polymarket market resolution disputes', tier: 3, position: null, hasPost: false },
   { keyword: 'polymarket negative risk explained', tier: 3, position: null, hasPost: false },
-  { keyword: 'how to use polymarket in india', tier: 3, position: null, hasPost: false },
+  { keyword: 'polymarket arbitrage strategy', tier: 3, position: null, hasPost: false },
+  { keyword: 'polymarket crypto price markets', tier: 3, position: null, hasPost: false },
+  { keyword: 'polymarket parlay multi outcome bets', tier: 3, position: null, hasPost: false },
+  { keyword: 'polymarket leverage risk explained', tier: 3, position: null, hasPost: false },
+  { keyword: 'polymarket dispute resolution uma oracle', tier: 3, position: null, hasPost: false },
 ];
 
 // ---------- Trader spotlight ----------
@@ -769,7 +772,7 @@ If no AVAILABLE keyword gap can be covered without colliding with a recent post,
 Give it a unique slug built around the durable angle + the specific subject (e.g. polymarket-[entity]-[smart-money|convergence|positioning]-angle), NOT around a month/year. This must pass the intent gate (no listing/price-target/navigational patterns).
 (Trader spotlight posts are handled separately on the weekly spotlight day — do NOT write a trader-name profile here.)
 
-When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.${rejectionReason ? `\n\nIMPORTANT: Your previous attempt was REJECTED for duplicate overlap. Reason: ${rejectionReason}\nPick a different topic that does not overlap.` : ''}${forceTrending ? `\n\nFINAL ATTEMPT — MANDATORY: Take the highest-volume market from "Today's trending Polymarket markets" whose subject is not already covered, and write a DURABLE evergreen/smart-money angle that uses it as a LIVE EXAMPLE (per RESILIENT FALLBACK). Build a unique slug around the durable angle + subject/entity — NOT a "trending markets [month/year]" listing, NOT a price target, NOT a numeric ID. It must pass the intent gate. This guarantees a non-duplicate, clickable post.` : ''}
+When targeting a keyword gap, use the keyword in the H1, meta title, meta description, and 3+ times in the body. Derive a natural, interesting angle — don't just regurgitate the keyword. Write something a reader searching that term would actually want to read.${rejectionReason ? `\n\nIMPORTANT: Your previous attempt was REJECTED for duplicate overlap. Reason: ${rejectionReason}\nPick a different topic that does not overlap.` : ''}${forceTrending ? `\n\nFINAL ATTEMPT — MANDATORY: Write a DURABLE evergreen/smart-money angle that uses a current market as a LIVE EXAMPLE (per RESILIENT FALLBACK). CRITICAL: do NOT pick a market whose subject already appears in the "Recently published" list above — e.g. if a World Cup post already exists, do NOT write any World Cup angle (it will collide on {world, cup}). Scan the trending list and the keyword gaps for a subject on a DIFFERENT topic entirely (a different sport, a political/econ/crypto market, or an uncovered evergreen gap). Build a unique slug around that distinct subject — NOT a "trending markets [month/year]" listing, NOT a price target, NOT a numeric ID. It must pass the intent gate and share fewer than 2 topic words with every recent post.` : ''}
 
 Today's trending Polymarket markets (sorted by 24h volume, for reference / optional trending hook):
 ${JSON.stringify(markets, null, 2)}
@@ -1193,9 +1196,22 @@ async function main() {
         if (!(err instanceof DuplicateTopicError) && !(err instanceof TopicRejectedError)) throw err;
         console.warn(`Attempt ${attempt}/${MAX_ATTEMPTS} rejected: ${err.message}`);
         rejections.push(`Attempt ${attempt}: ${err.message}`);
-        if (attempt === MAX_ATTEMPTS) throw err;
+        // Final attempt exhausted with no acceptable, non-duplicate topic.
+        // This is NOT an error — it means everything fresh is already covered
+        // today (e.g. keyword gaps used up AND the trending feed is dominated
+        // by an already-covered event). Skip cleanly rather than failing the
+        // run; the weekly spotlight and tomorrow's fresh data will resume.
+        if (attempt === MAX_ATTEMPTS) {
+          console.log('No fresh, non-duplicate topic available today — skipping cleanly (not an error). Recent days are well covered; next spotlight day or new trending data will resume publishing.');
+          return;
+        }
       }
     }
+  }
+
+  if (!post) {
+    console.log('No post produced — skipping cleanly.');
+    return;
   }
 
   console.log(`Generated post: "${post.title}" (${post.slug})`);

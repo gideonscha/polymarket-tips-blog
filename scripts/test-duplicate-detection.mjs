@@ -90,14 +90,15 @@ if (conflict) {
   console.log(`     -> flagged against /${conflict.slug}/, shared topic words: ${[...proposed].filter(w => conflict.topicWords.has(w)).join(', ')}`);
 }
 
-// Simulate proposing a genuinely new topic — should pass.
+// Simulate proposing a genuinely new topic — should pass. (Uses a subject
+// with no existing post; refresh this if such a post is ever published.)
 const newTopic = postTopicWords({
-  title: 'How to Read Order Book Depth on Polymarket for an Entry Edge',
-  slug: 'polymarket-order-book-depth-entry-edge',
+  title: 'How Polymarket Parlay Bets Combine Multiple Outcomes',
+  slug: 'polymarket-parlay-multi-outcome-bets',
 });
 const newConflict = findOverlappingRecentPost(newTopic, recent, 2);
 if (newConflict) {
-  console.log(`     order-book topic conflicted with /${newConflict.slug}/, shared: ${[...newTopic].filter(w => newConflict.topicWords.has(w)).join(', ')}`);
+  console.log(`     parlay topic conflicted with /${newConflict.slug}/, shared: ${[...newTopic].filter(w => newConflict.topicWords.has(w)).join(', ')}`);
 }
 assert(newConflict === null, `order book depth post should be SAFE`);
 
